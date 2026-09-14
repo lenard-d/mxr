@@ -122,7 +122,7 @@ This keeps recovery boring and explicit instead of leaving the account stuck on 
 Current repair paths:
 
 - bad Gmail cursor -> reset to `Initial` and retry once
-- label-capable account with messages but empty `message_labels` -> reset cursor and rebuild associations through full sync
+- account whose provider syncs stable message labels, with messages but no `message_labels` for that account -> reset cursor and rebuild associations through full sync
 - lexical index drift on daemon startup -> rebuild Tantivy from SQLite
 - single-message `GetBody` on a missing, legacy, or suspicious best-effort body row -> provider hydrate and persist
 

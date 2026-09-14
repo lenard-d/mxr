@@ -1,0 +1,59 @@
+name: Build VPS binary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/gmail-imap-label-recovery
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-vps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: vps-x86_64
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev libasound2-dev libdbus-1-dev pkg-config
+
+      - name: Build web app
+        working-directory: apps/web
+        run: npm ci && npm run build
+
+      - name: Build MXR
+        env:
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+        run: cargo build --release --locked --target x86_64-unknown-linux-gnu -p mxr --features semantic-local,web-ui
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-gnu/release/mxr dist/mxr
+          sha256sum dist/mxr > dist/mxr.sha256
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mxr-linux-x86_64-${{ github.sha }}
+          path: dist/
+          retention-days: 7

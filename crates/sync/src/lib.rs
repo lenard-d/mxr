@@ -1805,32 +1805,58 @@ mod tests {
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
+        let other_account_id = AccountId::new();
         store
             .insert_account(&test_account(account_id.clone()))
             .await
             .unwrap();
-
-        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
-
-        // Initial sync
-        engine.sync_account(&provider).await.unwrap();
-
-        let junction_before = store.count_message_labels().await.unwrap();
-        assert!(junction_before > 0);
-
-        // Wipe junction table manually (simulates corrupted DB)
-        sqlx::query("DELETE FROM message_labels")
-            .execute(store.writer())
+        store
+            .insert_account(&test_account(other_account_id.clone()))
             .await
             .unwrap();
 
-        let junction_wiped = store.count_message_labels().await.unwrap();
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let other_provider = mxr_provider_fake::FakeProvider::new(other_account_id.clone());
+
+        // Initial sync for both accounts. The other account keeps junction
+        // rows while this account is repaired.
+        engine.sync_account(&provider).await.unwrap();
+        engine.sync_account(&other_provider).await.unwrap();
+
+        let junction_before = store
+            .count_message_labels_by_account(&account_id)
+            .await
+            .unwrap();
+        assert!(junction_before > 0);
+
+        // Wipe one account's associations while another account remains
+        // healthy. A global count would miss this corruption.
+        sqlx::query(
+            "DELETE FROM message_labels WHERE message_id IN \
+             (SELECT id FROM messages WHERE account_id = ?)",
+        )
+        .bind(account_id.as_str())
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        let junction_wiped = store
+            .count_message_labels_by_account(&account_id)
+            .await
+            .unwrap();
         assert_eq!(junction_wiped, 0, "Junction should be empty after wipe");
+        assert!(
+            store.count_message_labels().await.unwrap() > 0,
+            "The other account should keep the global junction count non-zero"
+        );
 
         // Sync again — should detect empty junction and backfill
         engine.sync_account(&provider).await.unwrap();
 
-        let junction_after = store.count_message_labels().await.unwrap();
+        let junction_after = store
+            .count_message_labels_by_account(&account_id)
+            .await
+            .unwrap();
         assert!(
             junction_after > 0,
             "Junction table should be repopulated after backfill (got {junction_after})"

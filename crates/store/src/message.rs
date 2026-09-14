@@ -1020,6 +1020,26 @@ impl super::Store {
         Ok(row.cnt as u32)
     }
 
+    /// Count label associations for one account.
+    pub async fn count_message_labels_by_account(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<u32, sqlx::Error> {
+        let aid = account_id.as_str();
+        let row = sqlx::query(
+            r#"
+            SELECT COUNT(*) AS cnt
+            FROM message_labels ml
+            JOIN messages m ON m.id = ml.message_id
+            WHERE m.account_id = ?
+            "#,
+        )
+        .bind(aid)
+        .fetch_one(self.reader())
+        .await?;
+        Ok(row.get::<i64, _>("cnt") as u32)
+    }
+
     /// Mark a message as trashed (update flags).
     ///
     /// Emits `Trashed` to `message_events` only when the TRASH bit was clear;

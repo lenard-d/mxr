@@ -606,7 +606,7 @@ impl SyncEngine {
             // the old INSERT OR REPLACE cascade bug).
             let junction_count = self
                 .store
-                .count_message_labels()
+                .count_message_labels_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             let message_count = self
@@ -614,7 +614,7 @@ impl SyncEngine {
                 .count_messages_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
-            if provider.capabilities().mutate.labels && junction_count == 0 && message_count > 0 {
+            if provider.syncs_message_labels() && junction_count == 0 && message_count > 0 {
                 tracing::warn!(
                     message_count,
                     "Junction table empty — resetting sync cursor for full re-sync"
