@@ -635,6 +635,11 @@ fn special_use_from_attributes(
         async_imap::types::NameAttribute::All => Some("\\All".to_string()),
         async_imap::types::NameAttribute::Archive => Some("\\Archive".to_string()),
         async_imap::types::NameAttribute::Flagged => Some("\\Flagged".to_string()),
+        async_imap::types::NameAttribute::Extension(value)
+            if value.eq_ignore_ascii_case("\\Important") =>
+        {
+            Some("\\Important".to_string())
+        }
         _ => None,
     })
 }
@@ -1860,6 +1865,30 @@ mod tests {
         assert_eq!(
             special_use_from_attributes(&[NameAttribute::Extension("\\Foo".into())]),
             None
+        );
+        assert_eq!(
+            special_use_from_attributes(&[NameAttribute::Extension("\\Important".into())]),
+            Some("\\Important".to_string())
+        );
+    }
+
+    #[test]
+    fn gmail_quoted_system_labels_survive_full_fetch_parsing() {
+        let response = b"* 1 FETCH (X-GM-THRID 1 X-GM-MSGID 2 X-GM-LABELS (\"\\\\Important\" \"\\\\Inbox\") UID 3 RFC822.SIZE 4 INTERNALDATE \"14-Sep-2026 12:00:00 +0000\" FLAGS (\\Seen) BODY[] {4}\r\ntest)\r\n";
+        let (_, response) = async_imap::imap_proto::parser::parse_response(response).unwrap();
+        let async_imap::imap_proto::Response::Fetch(_, attrs) = response else {
+            panic!("expected FETCH response");
+        };
+        let message = fetched_message_from_attrs(&attrs).unwrap();
+
+        assert_eq!(message.gmail_labels, vec!["\\\\Important", "\\\\Inbox"]);
+        assert_eq!(
+            message
+                .gmail_labels
+                .iter()
+                .filter_map(|label| crate::folders::normalize_gmail_label_provider_id(label))
+                .collect::<Vec<_>>(),
+            vec!["IMPORTANT", "INBOX"]
         );
     }
 

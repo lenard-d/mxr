@@ -27,6 +27,7 @@ pub fn map_folder_to_label(
             Some(Role::Archive),
         ),
         Some("\\All") => ("ALL".to_string(), LabelKind::System, Some(Role::AllMail)),
+        Some("\\Important") => ("IMPORTANT".to_string(), LabelKind::System, None),
         Some("\\Flagged") => (
             "STARRED".to_string(),
             LabelKind::System,
@@ -81,14 +82,17 @@ pub fn normalize_gmail_label_provider_id(label: &str) -> Option<String> {
     // label named "Junk"/"All"/"Flagged" falls through unchanged instead of
     // collapsing onto a system label (which would, e.g., hide mail as SPAM).
     // Bare "inbox" is handled by `map_gmail_folder_to_label`.
+    // imap-proto keeps quoted-string escape bytes. Gmail therefore reaches us
+    // as either `\Inbox` (atom) or `\\Inbox` (quoted string on the wire).
     let normalized = match trimmed.to_ascii_lowercase().as_str() {
-        "\\inbox" => "INBOX".to_string(),
-        "\\sent" => "SENT".to_string(),
-        "\\draft" | "\\drafts" => "DRAFT".to_string(),
-        "\\trash" => "TRASH".to_string(),
-        "\\spam" | "\\junk" => "SPAM".to_string(),
-        "\\flagged" | "\\starred" => "STARRED".to_string(),
-        "\\all" | "\\allmail" => "ALL".to_string(),
+        "\\inbox" | "\\\\inbox" => "INBOX".to_string(),
+        "\\sent" | "\\\\sent" => "SENT".to_string(),
+        "\\draft" | "\\\\draft" | "\\drafts" | "\\\\drafts" => "DRAFT".to_string(),
+        "\\trash" | "\\\\trash" => "TRASH".to_string(),
+        "\\spam" | "\\\\spam" | "\\junk" | "\\\\junk" => "SPAM".to_string(),
+        "\\flagged" | "\\\\flagged" | "\\starred" | "\\\\starred" => "STARRED".to_string(),
+        "\\important" | "\\\\important" => "IMPORTANT".to_string(),
+        "\\all" | "\\\\all" | "\\allmail" | "\\\\allmail" => "ALL".to_string(),
         "" => return None,
         _ => trimmed.to_string(),
     };
@@ -174,6 +178,14 @@ mod tests {
         assert_eq!(
             normalize_gmail_label_provider_id("\\Sent"),
             Some("SENT".to_string())
+        );
+        assert_eq!(
+            normalize_gmail_label_provider_id("\\\\Inbox"),
+            Some("INBOX".to_string())
+        );
+        assert_eq!(
+            normalize_gmail_label_provider_id("\\\\Important"),
+            Some("IMPORTANT".to_string())
         );
     }
 

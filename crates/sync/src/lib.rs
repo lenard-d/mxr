@@ -1864,6 +1864,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_label_repair_stops_after_one_restart() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search);
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let envelope = make_test_envelope(
+            &account_id,
+            "message-with-unknown-label",
+            vec!["missing-label".to_string()],
+        );
+        let provider = DeltaLabelProvider::new(account_id, vec![envelope], vec![], vec![]);
+
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            engine.sync_account(&provider),
+        )
+        .await
+        .expect("label repair must not loop forever")
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("label repair completed without rebuilding associations"));
+    }
+
+    #[tokio::test]
     async fn sync_label_resolution_matches_gmail_ids() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();

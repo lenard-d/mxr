@@ -310,6 +310,7 @@ impl SyncEngine {
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_expired_cursor = false;
+        let mut attempted_label_repair = false;
         // Phase F: accumulate thread_ids touched this sync run. Populated
         // from each upserted envelope plus any (old, canonical) pair
         // returned by `rethread_account`. Drained into
@@ -615,6 +616,11 @@ impl SyncEngine {
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             if provider.syncs_message_labels() && junction_count == 0 && message_count > 0 {
+                if attempted_label_repair {
+                    return Err(MxrError::Sync(format!(
+                        "label repair completed without rebuilding associations for account {account_id}"
+                    )));
+                }
                 tracing::warn!(
                     message_count,
                     "Junction table empty — resetting sync cursor for full re-sync"
@@ -623,6 +629,7 @@ impl SyncEngine {
                     .set_sync_cursor(account_id, &SyncCursor::empty())
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                attempted_label_repair = true;
                 progress(SyncProgress::Restarted);
                 continue;
             }
