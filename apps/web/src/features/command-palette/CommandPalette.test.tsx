@@ -71,6 +71,7 @@ vi.mock("@/features/diagnostics/api", () => ({
 vi.mock("@/features/mailbox/api", () => ({
   fetchShell: mailboxApi.fetchShell,
   listCommitments: mailboxApi.listCommitments,
+  shellKey: ["shell"],
 }));
 
 vi.mock("sonner", () => ({

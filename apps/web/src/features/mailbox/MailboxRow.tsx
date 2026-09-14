@@ -84,6 +84,7 @@ export function MailboxRow({
         row.unread &&
           "font-semibold text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-unread-marker",
       )}
+      data-read-only={readOnly ? "true" : "false"}
       style={{ height: "var(--row-height)" }}
     >
       {readOnly ? null : (
@@ -93,6 +94,7 @@ export function MailboxRow({
             onClick={toggleSelection}
             aria-label={selected ? "Deselect message" : "Select message"}
             className={cn(
+              "mailbox-row-select",
               "grid size-4 place-items-center rounded border border-border text-[10px] text-primary opacity-0 transition-opacity group-hover:opacity-100",
               selected && "border-primary bg-primary text-primary-foreground opacity-100",
             )}
@@ -103,6 +105,7 @@ export function MailboxRow({
           <button
             type="button"
             className={cn(
+              "mailbox-row-star",
               "grid size-5 place-items-center rounded text-muted-foreground hover:bg-muted",
               row.starred && "text-star",
             )}
@@ -124,7 +127,7 @@ export function MailboxRow({
         {conversationCount ? <ConversationBadge count={conversationCount} /> : null}
       </div>
 
-      <div className="min-w-0">
+      <div className="mailbox-row-content min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="mailbox-row-subject truncate text-[length:var(--mail-row-subject-size)] leading-5">
             {row.subject || "(no subject)"}
@@ -165,7 +168,7 @@ export function MailboxRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-1 justify-self-end">
+      <div className="mailbox-row-trailing flex items-center gap-1 justify-self-end">
         <div className="mr-1 whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
           {row.date_label}
         </div>

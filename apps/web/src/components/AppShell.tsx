@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HelpDialog } from "@/components/HelpDialog";
+import { MobileSidebar } from "@/components/MobileSidebar";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RightRail } from "@/components/RightRail";
 import { Sidebar } from "@/components/Sidebar";
@@ -25,6 +26,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 const G_A_MIGRATION_KEY = "mxr.shortcut.ga-migration-shown.v1";
 
 export function AppShell() {
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
   const rightRail = useModals((s) => s.rightRail);
   const helpOpen = useModals((s) => s.helpOpen);
@@ -70,6 +72,10 @@ export function AppShell() {
     }
   }, [accounts.data?.accounts.length, navigate, path]);
 
+  useEffect(() => {
+    setMobileNavigationOpen(false);
+  }, [path]);
+
   return (
     <div
       className="app-shell"
@@ -80,7 +86,7 @@ export function AppShell() {
         <Sidebar />
       </div>
       <div className="app-shell-topbar">
-        <Topbar />
+        <Topbar onOpenNavigation={() => setMobileNavigationOpen(true)} />
       </div>
       <div className="app-shell-main">
         <OfflineBanner />
@@ -100,6 +106,7 @@ export function AppShell() {
       <ComposeLauncher />
       <ComposeHost />
       <SearchPalette />
+      <MobileSidebar open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen} />
       <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} path={path} activePane={activePane} />
     </div>
   );

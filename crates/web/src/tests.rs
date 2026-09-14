@@ -1245,6 +1245,8 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
     let mut expected = sample_envelope();
     expected.subject = "Archive rollup".into();
     expected.snippet = "Everything local, nothing filtered.".into();
+    let selected_account_id = expected.account_id.clone();
+    let selected_account_query = selected_account_id.to_string();
     let labels = sample_labels(&expected.account_id);
     let saved_search = sample_saved_search(expected.account_id.clone());
     let subscription = sample_subscription(&expected.account_id);
@@ -1267,7 +1269,9 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                     degraded: false,
                 },
             }),
-            Request::ListLabels { account_id: None } => Some(Response::Ok {
+            Request::ListLabels {
+                account_id: Some(account_id),
+            } if account_id == selected_account_id => Some(Response::Ok {
                 data: ResponseData::Labels {
                     labels: labels.clone(),
                 },
@@ -1278,9 +1282,9 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                 },
             }),
             Request::ListSubscriptions {
-                account_id: None,
+                account_id: Some(account_id),
                 limit: 8,
-            } => Some(Response::Ok {
+            } if account_id == selected_account_id => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
                 },
@@ -1289,8 +1293,8 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                 limit: 200,
                 offset: 0,
                 label_id: None,
-                account_id: None,
-            } => Some(Response::Ok {
+                account_id: Some(account_id),
+            } if account_id == selected_account_id => Some(Response::Ok {
                 data: ResponseData::Envelopes {
                     envelopes: vec![expected.clone()],
                 },
@@ -1310,7 +1314,9 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
     .unwrap();
 
     let response = reqwest::Client::new()
-        .get(format!("http://{addr}/mailbox?lens_kind=all_mail"))
+        .get(format!(
+            "http://{addr}/mailbox?lens_kind=all_mail&account_id={selected_account_query}"
+        ))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
         .await

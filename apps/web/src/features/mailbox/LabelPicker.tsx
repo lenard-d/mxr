@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -16,7 +16,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { deleteLabel, fetchShell, renameLabel, shellKey } from "@/features/mailbox/api";
+import { deleteLabel, renameLabel, shellKey } from "@/features/mailbox/api";
+import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import {
   useOptimisticMailMutation,
   type MailAction,
@@ -33,7 +34,7 @@ interface LabelPickerProps {
 }
 
 export function LabelPicker({ mode, messageIds, appliedLabels, onClose }: LabelPickerProps) {
-  const shell = useQuery({ queryKey: shellKey, queryFn: fetchShell, staleTime: 60_000 });
+  const shell = useShellQuery();
   const [filter, setFilter] = useState("");
 
   const labelItems = useMemo(() => {

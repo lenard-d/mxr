@@ -1,5 +1,5 @@
-import { ChevronDown, Mail, UserPlus } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { Check, ChevronDown, Mail, Settings, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,19 +10,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { fetchAccounts } from "@/features/accounts/api";
+import { useActiveAccount } from "@/features/accounts/useActiveAccount";
 
-export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) {
-  const accounts = useQuery({
-    queryKey: ["accounts"],
-    queryFn: fetchAccounts,
-    staleTime: 60_000,
-  });
-  const rows = accounts.data?.accounts ?? [];
-  const account =
-    rows.find((row) => row.enabled && row.is_default) ??
-    rows.find((row) => row.enabled) ??
-    rows[0] ?? { name: "All accounts", email: "" };
+interface AccountSwitcherProps {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}
+
+export function AccountSwitcher({ collapsed = false, onNavigate }: AccountSwitcherProps) {
+  const { account, accounts, rows } = useActiveAccount();
+  const displayAccount = account ?? { name: "All accounts", email: "" };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -37,10 +34,12 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-medium leading-tight">{account.name}</div>
-                {account.email ? (
+                <div className="truncate text-xs font-medium leading-tight">
+                  {displayAccount.name}
+                </div>
+                {displayAccount.email ? (
                   <div className="truncate font-mono text-2xs text-muted-foreground">
-                    {account.email}
+                    {displayAccount.email}
                   </div>
                 ) : null}
               </div>
@@ -62,29 +61,54 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           </DropdownMenuItem>
         ) : (
           rows.map((row) => (
-            <DropdownMenuItem key={row.account_id} asChild>
-              <a href={`/accounts/${encodeURIComponent(row.key ?? row.account_id)}`}>
-                <Mail className="size-3" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{row.name || row.email}</span>
-                  <span className="block truncate font-mono text-2xs text-muted-foreground">
-                    {row.email}
+            <DropdownMenuItem key={row.account_id} disabled={!row.enabled} asChild={row.enabled}>
+              {row.enabled ? (
+                <Link
+                  to="/m/$mailbox"
+                  params={{ mailbox: "inbox" }}
+                  search={(previous) => ({ ...previous, account: row.account_id })}
+                  onClick={onNavigate}
+                >
+                  <Mail className="size-3" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{row.name || row.email}</span>
+                    <span className="block truncate font-mono text-2xs text-muted-foreground">
+                      {row.email}
+                    </span>
                   </span>
-                </span>
-                {row.is_default ? (
-                  <span className="rounded bg-primary-muted px-1 text-2xs text-primary">
-                    default
+                  {account?.account_id === row.account_id ? (
+                    <Check className="size-3 text-primary" aria-label="Selected account" />
+                  ) : row.is_default ? (
+                    <span className="rounded bg-primary-muted px-1 text-2xs text-primary">
+                      default
+                    </span>
+                  ) : null}
+                </Link>
+              ) : (
+                <>
+                  <Mail className="size-3" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{row.name || row.email}</span>
+                    <span className="block truncate font-mono text-2xs text-muted-foreground">
+                      {row.email}
+                    </span>
                   </span>
-                ) : null}
-              </a>
+                  <span className="text-2xs text-muted-foreground">disabled</span>
+                </>
+              )}
             </DropdownMenuItem>
           ))
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <a href="/accounts/new">
+          <Link to="/accounts/$key" params={{ key: "new" }} onClick={onNavigate}>
             <UserPlus className="size-3" /> Add account
-          </a>
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/accounts" onClick={onNavigate}>
+            <Settings className="size-3" /> Manage accounts
+          </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

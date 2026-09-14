@@ -3,6 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { find as findLinks } from "linkifyjs";
 import {
   Archive,
+  ArrowLeft,
   Ban,
   ChevronDown,
   Clock,
@@ -603,7 +604,17 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         setActivePane("reader");
       }}
     >
-      <header className="border-b border-border px-5 py-3 lg:px-6">
+      <header className="border-b border-border px-3 py-3 sm:px-5 lg:px-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-2 -ml-2 md:hidden"
+          onClick={() => void navigate({ to: mailboxPath })}
+          aria-label="Back to mailbox"
+        >
+          <ArrowLeft className="size-4" />
+          Back
+        </Button>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -663,7 +674,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
           </div>
         </div>
         <div
-          className="mt-3 flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-hidden border-t border-border/70 pt-3"
+          className="mt-3 flex min-w-0 flex-nowrap items-center justify-start gap-2 overflow-x-auto border-t border-border/70 pt-3 md:justify-end"
           role="toolbar"
           aria-label="Message actions"
         >

@@ -79,8 +79,19 @@ interface NavSection {
   items: NavItem[];
 }
 
-export function Sidebar() {
-  const collapsed = useUiPrefs((s) => s.sidebarCollapsed);
+interface SidebarProps {
+  forceExpanded?: boolean;
+  keyboardNavigation?: boolean;
+  onNavigate?: () => void;
+}
+
+export function Sidebar({
+  forceExpanded = false,
+  keyboardNavigation = true,
+  onNavigate,
+}: SidebarProps = {}) {
+  const storedCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const collapsed = forceExpanded ? false : storedCollapsed;
   const setCollapsed = useUiPrefs((s) => s.setSidebarCollapsed);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -120,6 +131,7 @@ export function Sidebar() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (!keyboardNavigation) return;
       if (activePane !== "sidebar") return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
@@ -140,12 +152,22 @@ export function Sidebar() {
         if (item) {
           void navigate({ to: item.to });
           setActivePane("mailbox");
+          onNavigate?.();
         }
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activePane, navigate, navigationItems, setActivePane, setSidebarIndex, sidebarIndex]);
+  }, [
+    activePane,
+    keyboardNavigation,
+    navigate,
+    navigationItems,
+    onNavigate,
+    setActivePane,
+    setSidebarIndex,
+    sidebarIndex,
+  ]);
 
   let itemIndex = 0;
 
@@ -155,7 +177,7 @@ export function Sidebar() {
       aria-label="Mailbox sidebar"
     >
       <div className="border-b border-sidebar-border p-2">
-        <AccountSwitcher collapsed={collapsed} />
+        <AccountSwitcher collapsed={collapsed} onNavigate={onNavigate} />
       </div>
 
       <ScrollArea className="flex-1">
@@ -181,6 +203,7 @@ export function Sidebar() {
                       setSidebarIndex(index);
                       setActivePane("sidebar");
                     }}
+                    onNavigate={onNavigate}
                   />
                 );
               })}
@@ -200,23 +223,25 @@ export function Sidebar() {
         <ConnectionPill compact={collapsed} />
         <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
           <ThemePicker />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setCollapsed(!collapsed)}
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                {collapsed ? (
-                  <ChevronsRight className="size-3.5" />
-                ) : (
-                  <ChevronsLeft className="size-3.5" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{collapsed ? "Expand" : "Collapse"}</TooltipContent>
-          </Tooltip>
+          {forceExpanded ? null : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setCollapsed(!collapsed)}
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                  {collapsed ? (
+                    <ChevronsRight className="size-3.5" />
+                  ) : (
+                    <ChevronsLeft className="size-3.5" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{collapsed ? "Expand" : "Collapse"}</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </aside>
@@ -249,14 +274,16 @@ interface LinkProps {
   active: boolean;
   focused: boolean;
   onFocusPane: () => void;
+  onNavigate?: () => void;
 }
 
-function SidebarLink({ item, collapsed, active, focused, onFocusPane }: LinkProps) {
+function SidebarLink({ item, collapsed, active, focused, onFocusPane, onNavigate }: LinkProps) {
   const inner = (
     <Link
       to={item.to}
       data-focused={focused ? "true" : undefined}
       onFocus={onFocusPane}
+      onClick={onNavigate}
       className={cn(
         "group flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
         active

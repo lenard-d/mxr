@@ -12,6 +12,7 @@ export interface SnoozePreset {
 
 export interface MailboxLensParams {
   lens_kind: "inbox" | "all_mail" | "label" | "saved_search" | "subscription";
+  account_id?: string;
   label_id?: string;
   saved_search?: string;
   sender_email?: string;
@@ -29,8 +30,9 @@ export function mailboxKey(params: MailboxQueryParams) {
 
 export const shellKey = ["shell"] as const;
 
-export async function fetchShell(): Promise<ShellResponse> {
-  return apiFetch<ShellResponse>("/api/v1/client/shell");
+export async function fetchShell(accountId?: string): Promise<ShellResponse> {
+  const query = accountId ? `?account_id=${encodeURIComponent(accountId)}` : "";
+  return apiFetch<ShellResponse>(`/api/v1/client/shell${query}`);
 }
 
 export async function fetchMailbox(params: MailboxQueryParams): Promise<MailboxResponse> {
@@ -39,6 +41,7 @@ export async function fetchMailbox(params: MailboxQueryParams): Promise<MailboxR
   query.set("view", params.view ?? "threads");
   query.set("limit", String(params.limit ?? 200));
   query.set("offset", String(params.offset ?? 0));
+  if (params.account_id) query.set("account_id", params.account_id);
   if (params.label_id) query.set("label_id", params.label_id);
   if (params.saved_search) query.set("saved_search", params.saved_search);
   if (params.sender_email) query.set("sender_email", params.sender_email);

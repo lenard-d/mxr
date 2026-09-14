@@ -75,7 +75,7 @@ export function MailboxRoute() {
 
 function MailboxHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex h-12 items-center justify-between border-b border-border px-4">
+    <div className="flex h-12 items-center justify-between border-b border-border px-3 sm:px-4">
       <div>
         <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
         <div className="font-mono text-2xs text-muted-foreground">{subtitle}</div>

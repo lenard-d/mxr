@@ -1,6 +1,6 @@
 import { useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
+import { Menu, Pencil } from "lucide-react";
 
 import { DensityToggle } from "@/components/DensityToggle";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { SearchInput } from "@/features/search/SearchInput";
 import { fetchAdminStatus } from "@/features/diagnostics/api";
 import { useModals } from "@/state/modalStore";
 
-export function Topbar() {
+export function Topbar({ onOpenNavigation }: { onOpenNavigation: () => void }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const setComposeOpen = useModals((state) => state.setComposeLauncherOpen);
 
@@ -24,17 +24,31 @@ export function Topbar() {
 
   return (
     <div className="flex w-full items-center gap-3">
-      <Breadcrumb path={path} />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0 md:hidden"
+        onClick={onOpenNavigation}
+        aria-label="Open navigation"
+      >
+        <Menu className="size-4" />
+      </Button>
+
+      <div className="hidden min-w-0 md:block">
+        <Breadcrumb path={path} />
+      </div>
 
       {isDemo ? <DemoChip /> : null}
 
       <SearchInput />
 
-      <DensityToggle />
+      <div className="hidden lg:block">
+        <DensityToggle />
+      </div>
 
       <Button size="sm" onClick={() => setComposeOpen(true)} aria-label="Compose new email">
         <Pencil className="size-3" />
-        Compose
+        <span className="hidden sm:inline">Compose</span>
       </Button>
     </div>
   );

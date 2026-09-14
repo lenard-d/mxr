@@ -19,6 +19,8 @@ pub(super) struct MailboxQuery {
     #[serde(default)]
     pub(super) sender_email: Option<String>,
     #[serde(default)]
+    pub(super) account_id: Option<String>,
+    #[serde(default)]
     pub(super) token: Option<String>,
 }
 

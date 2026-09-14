@@ -32,6 +32,14 @@ pub(super) struct AuthQuery {
     pub(super) token: Option<String>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub(super) struct AccountAuthQuery {
+    #[serde(default)]
+    pub(super) account_id: Option<String>,
+    #[serde(default)]
+    pub(super) token: Option<String>,
+}
+
 /// Resolve the bridge token from request headers.
 ///
 /// 1. `Authorization: Bearer <token>` — preferred, what generated SDKs use

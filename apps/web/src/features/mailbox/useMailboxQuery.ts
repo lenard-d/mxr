@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 
+import { useActiveAccount } from "@/features/accounts/useActiveAccount";
+
 import { fetchMailbox, fetchShell, mailboxKey, shellKey, type MailboxLensParams } from "./api";
 import type { MailboxResponse, MessageGroupView, ShellResponse, SidebarItem } from "./types";
 
@@ -67,17 +69,31 @@ export function resolveMailboxLens(pathname: string, shell?: ShellResponse): Mai
 }
 
 export function useShellQuery() {
-  return useQuery({ queryKey: shellKey, queryFn: fetchShell, staleTime: 30_000 });
+  const { account, selectedAccountId } = useActiveAccount();
+  const accountId = account?.account_id ?? selectedAccountId;
+  return useQuery({
+    queryKey: [...shellKey, accountId],
+    queryFn: () => fetchShell(accountId),
+    staleTime: 30_000,
+  });
 }
 
 export function useMailboxQuery() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const { account, selectedAccountId } = useActiveAccount();
+  const accountId = account?.account_id ?? selectedAccountId;
   const shell = useShellQuery();
   const lens = resolveMailboxLens(pathname, shell.data);
+  const accountLens = { ...lens, account_id: accountId };
   return useInfiniteQuery({
-    queryKey: mailboxKey({ ...lens, view: "threads", limit: MAILBOX_PAGE_SIZE }),
+    queryKey: mailboxKey({ ...accountLens, view: "threads", limit: MAILBOX_PAGE_SIZE }),
     queryFn: ({ pageParam }) =>
-      fetchMailbox({ ...lens, view: "threads", limit: MAILBOX_PAGE_SIZE, offset: pageParam }),
+      fetchMailbox({
+        ...accountLens,
+        view: "threads",
+        limit: MAILBOX_PAGE_SIZE,
+        offset: pageParam,
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       // Saved-search runs can't paginate: Request::RunSavedSearch takes no
@@ -96,7 +112,7 @@ export function useMailboxQuery() {
       return lastPageRows >= MAILBOX_PAGE_SIZE ? loadedPages * MAILBOX_PAGE_SIZE : undefined;
     },
     select: (data) => mergeMailboxPages(data.pages),
-    enabled: shell.isSuccess,
+    enabled: shell.isSuccess && Boolean(accountId),
     staleTime: 10_000,
   });
 }

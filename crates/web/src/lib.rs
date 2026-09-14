@@ -148,11 +148,17 @@ async fn mailbox(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
     let lens = query.lens();
-    let chrome = build_bridge_chrome(&state.config.socket_path, &lens).await?;
+    let account_id = query
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let chrome = build_bridge_chrome(&state.config.socket_path, &lens, account_id.as_ref()).await?;
     let mailbox = load_mailbox_selection(
         &state.config.socket_path,
         &chrome,
         &lens,
+        account_id.as_ref(),
         query.limit,
         query.offset,
     )
