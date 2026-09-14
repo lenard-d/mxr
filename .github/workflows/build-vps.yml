@@ -49,7 +49,7 @@ jobs:
       - name: Package binary
         run: |
           mkdir -p dist
-          cp target/x86_64-unknown-linux-gnu/release/mxr dist/mxr
+          cp target-cli/x86_64-unknown-linux-gnu/release/mxr dist/mxr
           sha256sum dist/mxr > dist/mxr.sha256
 
       - uses: actions/upload-artifact@v7
