@@ -177,7 +177,7 @@ export function Sidebar({
       aria-label="Mailbox sidebar"
     >
       <div className="border-b border-sidebar-border p-2">
-        <AccountSwitcher collapsed={collapsed} onNavigate={onNavigate} />
+        <AccountSwitcher collapsed={collapsed} />
       </div>
 
       <ScrollArea className="flex-1">

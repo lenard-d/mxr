@@ -14,14 +14,13 @@ import { useActiveAccount } from "@/features/accounts/useActiveAccount";
 
 interface AccountSwitcherProps {
   collapsed?: boolean;
-  onNavigate?: () => void;
 }
 
-export function AccountSwitcher({ collapsed = false, onNavigate }: AccountSwitcherProps) {
+export function AccountSwitcher({ collapsed = false }: AccountSwitcherProps) {
   const { account, accounts, rows } = useActiveAccount();
   const displayAccount = account ?? { name: "All accounts", email: "" };
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -67,7 +66,6 @@ export function AccountSwitcher({ collapsed = false, onNavigate }: AccountSwitch
                   to="/m/$mailbox"
                   params={{ mailbox: "inbox" }}
                   search={(previous) => ({ ...previous, account: row.account_id })}
-                  onClick={onNavigate}
                 >
                   <Mail className="size-3" />
                   <span className="min-w-0 flex-1">
@@ -101,12 +99,12 @@ export function AccountSwitcher({ collapsed = false, onNavigate }: AccountSwitch
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link to="/accounts/$key" params={{ key: "new" }} onClick={onNavigate}>
+          <Link to="/accounts/$key" params={{ key: "new" }}>
             <UserPlus className="size-3" /> Add account
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/accounts" onClick={onNavigate}>
+          <Link to="/accounts">
             <Settings className="size-3" /> Manage accounts
           </Link>
         </DropdownMenuItem>

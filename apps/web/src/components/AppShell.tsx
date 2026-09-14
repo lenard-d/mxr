@@ -34,6 +34,7 @@ export function AppShell() {
   const activePane = useMailboxPane((s) => s.activePane);
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
+  const activeAccountId = useRouterState({ select: (state) => state.location.search?.account });
   useNewMessageNotifier();
   const accounts = useQuery({
     queryKey: ["accounts"],
@@ -74,7 +75,7 @@ export function AppShell() {
 
   useEffect(() => {
     setMobileNavigationOpen(false);
-  }, [path]);
+  }, [activeAccountId, path]);
 
   return (
     <div
