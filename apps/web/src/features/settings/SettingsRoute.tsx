@@ -9,6 +9,7 @@ import {
   Keyboard,
   Layers,
   Palette,
+  PanelLeft,
   Pencil,
   Plus,
   Trash2,
@@ -38,6 +39,7 @@ import { TokenSection } from "@/features/settings/TokenSection";
 import { useActionShortcutSections } from "@/lib/actions";
 import {
   useUiPrefs,
+  sidebarFeatureOptions,
   type ComposeEditor,
   type Density,
   type EmailHtmlTheme,
@@ -49,6 +51,7 @@ import {
 const sections = [
   ["theme", "Theme", Palette],
   ["density", "Density", Layers],
+  ["sidebar", "Sidebar", PanelLeft],
   ["reader", "Reader", BookOpen],
   ["keybindings", "Keybindings", Keyboard],
   ["notifications", "Notifications", Bell],
@@ -239,6 +242,7 @@ function SettingsSection({ section }: { section: string }) {
         />
       </Shell>
     );
+  if (section === "sidebar") return <SidebarSettingsSection />;
   if (section === "reader")
     return (
       <Shell title="Reader">
@@ -358,6 +362,43 @@ function SettingsSection({ section }: { section: string }) {
   return (
     <Shell title="Settings">
       <p className="text-xs text-muted-foreground">Unknown section.</p>
+    </Shell>
+  );
+}
+
+export function SidebarSettingsSection() {
+  const sidebarVisibility = useUiPrefs((state) => state.sidebarVisibility);
+  const setSidebarItemVisible = useUiPrefs((state) => state.setSidebarItemVisible);
+
+  return (
+    <Shell title="Sidebar">
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm font-medium">Choose what appears in the sidebar</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Mail and Settings stay available so the core workspace and preferences are never hidden.
+          </p>
+        </div>
+        <Card className="divide-y divide-border p-4">
+          {sidebarFeatureOptions.map((feature) => (
+            <div
+              key={feature.key}
+              className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+            >
+              <div className="min-w-0">
+                <Label htmlFor={`sidebar-feature-${feature.key}`}>{feature.label}</Label>
+                <p className="mt-1 text-2xs text-muted-foreground">{feature.description}</p>
+              </div>
+              <Switch
+                id={`sidebar-feature-${feature.key}`}
+                aria-label={`Show ${feature.label} in sidebar`}
+                checked={sidebarVisibility[feature.key]}
+                onCheckedChange={(visible) => setSidebarItemVisible(feature.key, visible)}
+              />
+            </div>
+          ))}
+        </Card>
+      </div>
     </Shell>
   );
 }
@@ -1238,7 +1279,7 @@ function Toggle({
   return (
     <Card className="flex items-center justify-between p-4">
       <span className="text-sm font-medium">{label}</span>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </Card>
   );
 }

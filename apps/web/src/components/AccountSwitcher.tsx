@@ -31,7 +31,12 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="h-9 w-full justify-start gap-2 px-2 text-left"
+          size={collapsed ? "icon-lg" : "default"}
+          className={
+            collapsed
+              ? "size-10 justify-center p-0"
+              : "h-9 w-full justify-start gap-2 px-2 text-left"
+          }
           aria-label="Account switcher"
         >
           <ProviderFavicon email={account.email} />

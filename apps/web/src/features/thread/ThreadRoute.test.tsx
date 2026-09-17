@@ -11,7 +11,7 @@ import { useComposeUi } from "@/features/compose/composeUiStore";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
-import { useUiPrefs } from "@/state/uiPrefsStore";
+import { DEFAULT_THREAD_SPLIT_RATIO, useUiPrefs } from "@/state/uiPrefsStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -156,7 +156,10 @@ const thread: ThreadResponse = {
 describe("ThreadRoute", () => {
   beforeEach(() => {
     useMailboxPane.setState({ activePane: "reader", sidebarIndex: 0 });
-    useUiPrefs.setState({ readerLayout: "split" });
+    useUiPrefs.setState({
+      readerLayout: "split",
+      threadSplitRatio: DEFAULT_THREAD_SPLIT_RATIO,
+    });
     api.fetchThread.mockResolvedValue(thread);
     api.fetchShell.mockResolvedValue({
       shell: {},
@@ -194,7 +197,10 @@ describe("ThreadRoute", () => {
       suppressNextReaderFocus: false,
     });
     useModals.setState({ rightRail: null });
-    useUiPrefs.setState({ readerLayout: "split" });
+    useUiPrefs.setState({
+      readerLayout: "split",
+      threadSplitRatio: DEFAULT_THREAD_SPLIT_RATIO,
+    });
   });
 
   test("opens label editing from the reader keyboard shortcut and saves add/remove changes", async () => {
@@ -216,6 +222,34 @@ describe("ThreadRoute", () => {
     await waitFor(() => {
       expect(api.modifyLabels).toHaveBeenCalledWith(["msg-1", "msg-2"], ["Later"], ["Work"]);
     });
+  });
+
+  test("exposes an accessible keyboard-resizable split divider", async () => {
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    const handle = screen.getByRole("separator", { name: "Resize mailbox pane" });
+    expect(handle).toHaveAttribute("aria-valuenow", "42");
+
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(useUiPrefs.getState().threadSplitRatio).toBeCloseTo(0.47);
+
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(useUiPrefs.getState().threadSplitRatio).toBeCloseTo(0.28);
+
+    fireEvent.doubleClick(handle);
+    expect(useUiPrefs.getState().threadSplitRatio).toBe(DEFAULT_THREAD_SPLIT_RATIO);
+  });
+
+  test("does not render the split divider in full reader mode", async () => {
+    useUiPrefs.setState({ readerLayout: "full" });
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+    expect(
+      screen.queryByRole("separator", { name: "Resize mailbox pane" }),
+    ).not.toBeInTheDocument();
   });
 
   test("direct-opened thread activates reader keyboard scrolling", async () => {

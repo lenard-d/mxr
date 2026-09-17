@@ -1,5 +1,5 @@
 /*
- * Global UI prefs — theme, density, sidebar collapsed state, compose editor
+ * Global UI prefs — theme, density, sidebar layout and visibility, compose editor
  * choice. Persisted to localStorage and hydrated synchronously in main.tsx
  * before render so the theme doesn't flash.
  */
@@ -13,10 +13,68 @@ export type Density = "compact" | "regular" | "comfortable";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
 export type EmailHtmlTheme = "dark" | "original";
 export type ReaderLayout = "split" | "full";
+export type SidebarFeature =
+  | "drafts"
+  | "search"
+  | "analytics"
+  | "rules"
+  | "screener"
+  | "subscriptions"
+  | "reply-queue"
+  | "invites"
+  | "deliveries"
+  | "accounts"
+  | "activity"
+  | "jobs"
+  | "diagnostics";
+export type SidebarVisibility = Record<SidebarFeature, boolean>;
 export type ToastCategory = "errors" | "success" | "info" | "undo" | "sent";
 export type ToastPreferences = Record<ToastCategory, boolean>;
 /** Undo-send window in seconds; 0 sends immediately. */
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
+
+export const SIDEBAR_WIDTH_MIN = 208;
+export const SIDEBAR_WIDTH_MAX = 420;
+export const DEFAULT_SIDEBAR_WIDTH = 264;
+export const THREAD_SPLIT_RATIO_MIN = 0.28;
+export const THREAD_SPLIT_RATIO_MAX = 0.65;
+export const DEFAULT_THREAD_SPLIT_RATIO = 0.42;
+
+export const sidebarFeatureOptions: ReadonlyArray<{
+  key: SidebarFeature;
+  label: string;
+  description: string;
+}> = [
+  { key: "drafts", label: "Drafts", description: "Keep drafts close at hand." },
+  { key: "search", label: "Search", description: "Show the saved-search workspace." },
+  { key: "analytics", label: "Analytics", description: "Show mail activity and insights." },
+  { key: "rules", label: "Rules", description: "Show automation rules." },
+  { key: "screener", label: "Screener", description: "Show sender screening tools." },
+  { key: "subscriptions", label: "Subscriptions", description: "Show subscription management." },
+  { key: "reply-queue", label: "Reply queue", description: "Show messages waiting for a reply." },
+  { key: "invites", label: "Calendar invites", description: "Show calendar invite tools." },
+  { key: "deliveries", label: "Deliveries", description: "Show delivery tracking." },
+  { key: "accounts", label: "Accounts", description: "Show account administration." },
+  { key: "activity", label: "Activity log", description: "Show local activity history." },
+  { key: "jobs", label: "Jobs", description: "Show background job status." },
+  { key: "diagnostics", label: "Diagnostics", description: "Show connection diagnostics." },
+];
+
+export const defaultSidebarVisibility: SidebarVisibility = {
+  drafts: true,
+  search: true,
+  analytics: true,
+  rules: true,
+  screener: true,
+  subscriptions: true,
+  "reply-queue": true,
+  invites: true,
+  deliveries: true,
+  accounts: true,
+  activity: true,
+  jobs: true,
+  diagnostics: true,
+};
 
 const themeValues = new Set(["midnight", "light", "eclipse", "paper", "system"]);
 const densityValues = new Set(["compact", "regular", "comfortable"]);
@@ -37,10 +95,23 @@ export function isDensity(value: unknown): value is Density {
   return typeof value === "string" && densityValues.has(value);
 }
 
+export function clampSidebarWidth(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_SIDEBAR_WIDTH;
+  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.round(value)));
+}
+
+export function clampThreadSplitRatio(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_THREAD_SPLIT_RATIO;
+  return Math.min(THREAD_SPLIT_RATIO_MAX, Math.max(THREAD_SPLIT_RATIO_MIN, value));
+}
+
 export interface UiPrefsState {
   theme: Theme;
   density: Density;
   sidebarCollapsed: boolean;
+  sidebarWidth: number;
+  threadSplitRatio: number;
+  sidebarVisibility: SidebarVisibility;
   composeEditor: ComposeEditor;
   emailHtmlTheme: EmailHtmlTheme;
   readerLayout: ReaderLayout;
@@ -53,6 +124,9 @@ export interface UiPrefsState {
   setTheme: (t: Theme) => void;
   setDensity: (d: Density) => void;
   setSidebarCollapsed: (b: boolean) => void;
+  setSidebarWidth: (width: number) => void;
+  setThreadSplitRatio: (ratio: number) => void;
+  setSidebarItemVisible: (item: SidebarFeature, visible: boolean) => void;
   setComposeEditor: (e: ComposeEditor) => void;
   setEmailHtmlTheme: (theme: EmailHtmlTheme) => void;
   setReaderLayout: (layout: ReaderLayout) => void;
@@ -68,6 +142,9 @@ type PersistedUiPrefs = Pick<
   | "theme"
   | "density"
   | "sidebarCollapsed"
+  | "sidebarWidth"
+  | "threadSplitRatio"
+  | "sidebarVisibility"
   | "composeEditor"
   | "emailHtmlTheme"
   | "readerLayout"
@@ -84,6 +161,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function isComposeEditor(value: unknown): value is ComposeEditor {
@@ -111,6 +192,20 @@ function sanitizePersistedPrefs(value: unknown): Partial<PersistedUiPrefs> {
   if (isDensity(record.density)) sanitized.density = record.density;
   if (typeof record.sidebarCollapsed === "boolean") {
     sanitized.sidebarCollapsed = record.sidebarCollapsed;
+  }
+  if (isFiniteNumber(record.sidebarWidth)) {
+    sanitized.sidebarWidth = clampSidebarWidth(record.sidebarWidth);
+  }
+  if (isFiniteNumber(record.threadSplitRatio)) {
+    sanitized.threadSplitRatio = clampThreadSplitRatio(record.threadSplitRatio);
+  }
+  if (isRecord(record.sidebarVisibility)) {
+    const sidebarVisibility = { ...defaultSidebarVisibility };
+    for (const option of sidebarFeatureOptions) {
+      const visible = record.sidebarVisibility[option.key];
+      if (typeof visible === "boolean") sidebarVisibility[option.key] = visible;
+    }
+    sanitized.sidebarVisibility = sidebarVisibility;
   }
   if (isComposeEditor(record.composeEditor)) sanitized.composeEditor = record.composeEditor;
   if (isEmailHtmlTheme(record.emailHtmlTheme)) sanitized.emailHtmlTheme = record.emailHtmlTheme;
@@ -145,6 +240,9 @@ export const useUiPrefs = create<UiPrefsState>()(
       theme: "midnight",
       density: "regular",
       sidebarCollapsed: false,
+      sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+      threadSplitRatio: DEFAULT_THREAD_SPLIT_RATIO,
+      sidebarVisibility: { ...defaultSidebarVisibility },
       composeEditor: "tiptap",
       emailHtmlTheme: "dark",
       readerLayout: "split",
@@ -157,6 +255,13 @@ export const useUiPrefs = create<UiPrefsState>()(
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      setSidebarWidth: (sidebarWidth) => set({ sidebarWidth: clampSidebarWidth(sidebarWidth) }),
+      setThreadSplitRatio: (threadSplitRatio) =>
+        set({ threadSplitRatio: clampThreadSplitRatio(threadSplitRatio) }),
+      setSidebarItemVisible: (item, visible) =>
+        set((state) => ({
+          sidebarVisibility: { ...state.sidebarVisibility, [item]: visible },
+        })),
       setComposeEditor: (composeEditor) => set({ composeEditor }),
       setEmailHtmlTheme: (emailHtmlTheme) => set({ emailHtmlTheme }),
       setReaderLayout: (readerLayout) => set({ readerLayout }),

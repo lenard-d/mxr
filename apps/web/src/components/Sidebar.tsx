@@ -22,7 +22,14 @@ import {
   Trash2,
   UserCog,
 } from "lucide-react";
-import { useEffect, useMemo, type ComponentType, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type ComponentType,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { ThemePicker } from "@/components/ThemePicker";
@@ -40,12 +47,19 @@ import type { SidebarItem } from "@/features/mailbox/types";
 import { buildMailMailboxPath, parseMailLocation } from "@/features/mailbox/location";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
-import { useUiPrefs } from "@/state/uiPrefsStore";
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
+  useUiPrefs,
+  type SidebarFeature,
+} from "@/state/uiPrefsStore";
 
 interface NavItem {
   to: string;
   label: string;
   Icon: ComponentType<{ className?: string }>;
+  feature?: SidebarFeature;
   badge?: string | number;
   shortcut?: string;
   dropTarget?: MailDropTargetData;
@@ -53,16 +67,39 @@ interface NavItem {
 
 const primary: NavItem[] = [
   { to: "/m/inbox", label: "Mail", Icon: Mail, shortcut: "1" },
-  { to: "/drafts", label: "Drafts", Icon: FileText },
-  { to: "/search", label: "Search", Icon: Search, shortcut: "2" },
-  { to: "/analytics", label: "Analytics", Icon: Activity, shortcut: "3" },
-  { to: "/rules", label: "Rules", Icon: Filter, shortcut: "4" },
-  { to: "/screener", label: "Screener", Icon: Shield, shortcut: "5" },
-  { to: "/subscriptions", label: "Subscriptions", Icon: Sparkles, shortcut: "6" },
-  { to: "/reply-queue", label: "Reply queue", Icon: MessageSquareReply, shortcut: "7" },
-  { to: "/invites", label: "Calendar invites", Icon: Calendar },
-  { to: "/deliveries", label: "Deliveries", Icon: Package },
-  { to: "/accounts", label: "Accounts", Icon: UserCog, shortcut: "8" },
+  { to: "/drafts", label: "Drafts", Icon: FileText, feature: "drafts" },
+  { to: "/search", label: "Search", Icon: Search, shortcut: "2", feature: "search" },
+  {
+    to: "/analytics",
+    label: "Analytics",
+    Icon: Activity,
+    shortcut: "3",
+    feature: "analytics",
+  },
+  { to: "/rules", label: "Rules", Icon: Filter, shortcut: "4", feature: "rules" },
+  { to: "/screener", label: "Screener", Icon: Shield, shortcut: "5", feature: "screener" },
+  {
+    to: "/subscriptions",
+    label: "Subscriptions",
+    Icon: Sparkles,
+    shortcut: "6",
+    feature: "subscriptions",
+  },
+  {
+    to: "/reply-queue",
+    label: "Reply queue",
+    Icon: MessageSquareReply,
+    shortcut: "7",
+    feature: "reply-queue",
+  },
+  {
+    to: "/invites",
+    label: "Calendar invites",
+    Icon: Calendar,
+    feature: "invites",
+  },
+  { to: "/deliveries", label: "Deliveries", Icon: Package, feature: "deliveries" },
+  { to: "/accounts", label: "Accounts", Icon: UserCog, shortcut: "8", feature: "accounts" },
 ];
 
 const fallbackLenses: NavItem[] = [
@@ -90,10 +127,15 @@ const fallbackLenses: NavItem[] = [
 ];
 
 const systemItems: NavItem[] = [
-  { to: "/activity", label: "Activity log", Icon: History },
-  { to: "/jobs", label: "Jobs", Icon: ListChecks },
-  { to: "/diagnostics", label: "Diagnostics", Icon: Activity, shortcut: "9" },
-  { to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "0" },
+  { to: "/activity", label: "Activity log", Icon: History, feature: "activity" },
+  { to: "/jobs", label: "Jobs", Icon: ListChecks, feature: "jobs" },
+  {
+    to: "/diagnostics",
+    label: "Diagnostics",
+    Icon: Activity,
+    shortcut: "9",
+    feature: "diagnostics",
+  },
 ];
 
 interface NavSection {
@@ -109,8 +151,12 @@ interface SidebarProps {
 
 export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const sidebarWidth = useUiPrefs((s) => s.sidebarWidth);
+  const sidebarVisibility = useUiPrefs((s) => s.sidebarVisibility);
   const collapsed = mobile ? false : sidebarCollapsed;
   const setCollapsed = useUiPrefs((s) => s.setSidebarCollapsed);
+  const setSidebarWidth = useUiPrefs((s) => s.setSidebarWidth);
+  const resetSidebarWidth = () => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const shell = useShellQuery();
@@ -121,6 +167,12 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
   const sidebarIndex = useMailboxPane((state) => state.sidebarIndex);
   const setSidebarIndex = useMailboxPane((state) => state.setSidebarIndex);
   const sections = useMemo<NavSection[]>(() => {
+    const visiblePrimary = primary.filter(
+      (item) => item.feature === undefined || sidebarVisibility[item.feature],
+    );
+    const visibleSystem = systemItems.filter(
+      (item) => item.feature === undefined || sidebarVisibility[item.feature],
+    );
     const lensSections =
       dynamicSections && dynamicSections.length > 0
         ? dynamicSections.map((section) => ({
@@ -134,12 +186,13 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
             })),
           }))
         : [{ label: "Lenses", items: scopedMailItems(fallbackLenses, accountKey) }];
-    return [
-      { label: "Workspace", items: scopedMailItems(primary, accountKey) },
+    const sections = [
+      { label: "Workspace", items: scopedMailItems(visiblePrimary, accountKey) },
       ...lensSections,
-      { label: "System", items: systemItems },
+      { label: "System", items: visibleSystem },
     ];
-  }, [accountKey, dynamicSections]);
+    return sections.filter((section) => section.items.length > 0);
+  }, [accountKey, dynamicSections, sidebarVisibility]);
   const navigationItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);
 
   useEffect(() => {
@@ -148,6 +201,11 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
       setSidebarIndex(activeIndex);
     }
   }, [activePane, navigationItems, path, setSidebarIndex, sidebarIndex]);
+
+  useEffect(() => {
+    if (navigationItems.length === 0 || sidebarIndex < navigationItems.length) return;
+    setSidebarIndex(navigationItems.length - 1);
+  }, [navigationItems.length, setSidebarIndex, sidebarIndex]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -191,7 +249,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
 
   return (
     <aside
-      className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground"
+      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
       data-mobile-navigation={mobile ? "true" : undefined}
       aria-label="Mailbox sidebar"
     >
@@ -236,37 +294,164 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
       <div
         className={cn(
           "border-t border-sidebar-border px-2 py-2",
-          collapsed
-            ? "flex flex-col items-center gap-1"
-            : "flex items-center justify-between gap-2",
+          collapsed ? "flex flex-col items-center gap-1" : "flex items-center gap-1",
           mobile && "pb-[max(0.5rem,env(safe-area-inset-bottom))]",
         )}
       >
-        <ConnectionPill compact={collapsed} />
-        <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
-          <ThemePicker />
-          {!mobile ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setCollapsed(!collapsed)}
-                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                >
-                  {collapsed ? (
-                    <ChevronsRight className="size-3.5" />
-                  ) : (
-                    <ChevronsLeft className="size-3.5" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{collapsed ? "Expand" : "Collapse"}</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </div>
+        <SidebarSettingsButton
+          onClick={() => {
+            onNavigate?.();
+            void navigate({ to: "/settings/theme" });
+          }}
+        />
+        <ConnectionPill compact className="size-9 shrink-0" />
+        {!collapsed ? <ThemePicker /> : null}
+        {!mobile ? (
+          <SidebarCollapseButton collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+        ) : null}
       </div>
+      {!mobile && !collapsed ? (
+        <SidebarResizeHandle
+          width={sidebarWidth}
+          onChange={setSidebarWidth}
+          onReset={resetSidebarWidth}
+        />
+      ) : null}
     </aside>
+  );
+}
+
+const SIDEBAR_RESIZE_KEYBOARD_STEP = 16;
+
+function SidebarSettingsButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9"
+          aria-label="Settings"
+          title="Settings"
+          onClick={onClick}
+        >
+          <Settings className="size-3.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">Settings</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SidebarCollapseButton({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9"
+          onClick={onToggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? (
+            <ChevronsRight className="size-3.5" />
+          ) : (
+            <ChevronsLeft className="size-3.5" />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{collapsed ? "Expand" : "Collapse"}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface SidebarResizeHandleProps {
+  width: number;
+  onChange: (width: number) => void;
+  onReset: () => void;
+}
+
+function SidebarResizeHandle({ width, onChange, onReset }: SidebarResizeHandleProps) {
+  const drag = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+
+  function endPointerResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    if (
+      typeof event.currentTarget.hasPointerCapture === "function" &&
+      event.currentTarget.hasPointerCapture(event.pointerId) &&
+      typeof event.currentTarget.releasePointerCapture === "function"
+    ) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    drag.current = null;
+  }
+
+  return (
+    <button
+      type="button"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-valuemin={SIDEBAR_WIDTH_MIN}
+      aria-valuemax={SIDEBAR_WIDTH_MAX}
+      aria-valuenow={width}
+      aria-valuetext={`${width} pixels`}
+      tabIndex={0}
+      data-testid="sidebar-resize-handle"
+      className="absolute inset-y-0 right-0 z-20 flex w-2 cursor-col-resize touch-none items-center justify-center border-0 bg-transparent p-0 outline-none transition-colors hover:bg-sidebar-primary/20 focus-visible:bg-sidebar-primary/30"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        drag.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startWidth: width,
+        };
+        if (typeof event.currentTarget.setPointerCapture === "function") {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }
+      }}
+      onPointerMove={(event) => {
+        const current = drag.current;
+        if (!current || current.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        onChange(current.startWidth + event.clientX - current.startX);
+      }}
+      onPointerUp={endPointerResize}
+      onPointerCancel={endPointerResize}
+      onLostPointerCapture={() => {
+        drag.current = null;
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onChange(width - SIDEBAR_RESIZE_KEYBOARD_STEP);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onChange(width + SIDEBAR_RESIZE_KEYBOARD_STEP);
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          onChange(SIDEBAR_WIDTH_MIN);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          onChange(SIDEBAR_WIDTH_MAX);
+        }
+      }}
+      onDoubleClick={onReset}
+    >
+      <span className="h-full w-px bg-sidebar-border" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -324,7 +509,11 @@ function SidebarLink({
       onClick={() => onNavigate?.()}
       className={cn(
         "group flex items-center gap-2 rounded-md",
-        mobile ? "min-h-10 px-3 py-2 text-sm" : "px-2 py-1.5 text-xs",
+        mobile
+          ? "min-h-10 px-3 py-2 text-sm"
+          : collapsed
+            ? "size-10 justify-center p-0 text-xs"
+            : "px-2 py-1.5 text-xs",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
