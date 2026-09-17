@@ -9,6 +9,7 @@ export function Toaster() {
     theme === "system" ? "system" : theme === "light" || theme === "paper" ? "light" : "dark";
   return (
     <SonnerToaster
+      className="app-toaster"
       theme={resolved}
       data-show-error-toasts={toastPreferences.errors}
       data-show-success-toasts={toastPreferences.success}
@@ -16,18 +17,22 @@ export function Toaster() {
       data-show-undo-toasts={toastPreferences.undo}
       data-show-sent-toasts={toastPreferences.sent}
       position="top-right"
+      gap={8}
       duration={4_000}
       closeButton
       toastOptions={{
         classNames: {
           toast:
-            "relative max-w-[min(420px,calc(100vw-1rem))] rounded-md border border-border bg-popover pr-11 text-popover-foreground shadow-lg",
-          title: "text-sm font-medium",
-          description: "text-2xs text-muted-foreground",
+            "relative max-w-[min(420px,calc(100vw-1rem))] !rounded-lg !border !border-border/80 !bg-popover !p-3 !pr-12 !text-popover-foreground !shadow-xl",
+          content: "!min-w-0 !flex-1 !gap-0.5",
+          title: "!text-sm !font-medium !leading-5",
+          description: "!text-2xs !leading-4 !text-muted-foreground",
           closeButton:
-            "!absolute !right-2 !top-2 !flex !size-8 !items-center !justify-center !rounded-md !border-border !bg-muted !text-foreground hover:!bg-accent",
-          actionButton: "min-h-8 bg-primary text-primary-foreground hover:bg-primary/90",
-          cancelButton: "min-h-8 bg-muted text-muted-foreground",
+            "!absolute !left-auto !right-2 !top-2 !z-10 !flex !size-8 !translate-x-0 !translate-y-0 !transform-none !items-center !justify-center !rounded-md !border !border-border/70 !bg-muted !p-0 !text-muted-foreground hover:!border-border hover:!bg-accent hover:!text-foreground",
+          actionButton:
+            "!h-8 !min-h-8 !shrink-0 !rounded-md !border !border-primary/60 !bg-primary !px-2.5 !text-2xs !font-medium !text-primary-foreground hover:!bg-primary/90",
+          cancelButton:
+            "!h-8 !min-h-8 !shrink-0 !rounded-md !border !border-border !bg-muted !px-2.5 !text-2xs !font-medium !text-muted-foreground hover:!bg-accent hover:!text-foreground",
         },
       }}
     />

@@ -319,7 +319,7 @@ describe("ThreadRoute", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
-  test("automatically prefers sanitized HTML and keeps remote images blocked", async () => {
+  test("automatically prefers sanitized HTML and loads normal remote images", async () => {
     const remoteImageUrl = "https://cdn.example.com/hero.jpg";
     api.fetchThread.mockResolvedValueOnce({
       ...thread,
@@ -337,11 +337,11 @@ describe("ThreadRoute", () => {
 
     expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
     const frame = screen.getByTitle("HTML message body");
-    const blockedImage = new DOMParser()
+    const remoteImage = new DOMParser()
       .parseFromString(frame.getAttribute("srcdoc") ?? "", "text/html")
       .querySelector('img[alt="hero"]');
-    expect(blockedImage?.getAttribute("src")).toBeNull();
-    expect(blockedImage?.getAttribute("data-original-src")).toBe(remoteImageUrl);
+    expect(remoteImage?.getAttribute("src")).toBe(remoteImageUrl);
+    expect(remoteImage?.getAttribute("data-original-src")).toBeNull();
     expect(screen.queryByRole("button", { name: "Load remote images" })).not.toBeInTheDocument();
   });
 

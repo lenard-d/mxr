@@ -85,18 +85,12 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     "text-decoration-line",
     "underline",
   );
-  await expect(frame.contentFrame().getByAltText("newsletter image")).not.toHaveAttribute(
-    "src",
-    "https://cdn.example.com/newsletter.png",
-  );
-  await expect(frame.contentFrame().getByAltText("tracking pixel")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Load remote images" })).toBeVisible();
-  await page.getByRole("button", { name: "Load remote images" }).click();
   await expect(frame.contentFrame().getByAltText("newsletter image")).toHaveAttribute(
     "src",
     "https://cdn.example.com/newsletter.png",
   );
   await expect(frame.contentFrame().getByAltText("tracking pixel")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Load remote images" })).toHaveCount(0);
   await expect(frame.contentFrame().locator("body")).toHaveCSS("background-color", "rgb(17, 17, 15)");
 
   const heights = await page.getByTestId("thread-scroll").evaluate((scrollNode) => {

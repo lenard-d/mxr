@@ -6,8 +6,8 @@
  * markdown composer cannot represent it and the bridge refuses to open an
  * editing session (`code: "html_draft_not_editable"`). Rather than a dead-end
  * error we show the document read-only, reusing the thread reader's sandboxed
- * iframe — with remote images blocked, so merely looking at your own draft
- * cannot fire a tracking pixel.
+ * iframe. Normal remote images load by default while known tracking pixels are
+ * still removed by the sanitizer.
  *
  * The sanitising in that iframe is display-only. Nothing here writes back to
  * the stored draft, and there is no compose file to save or send from, so the
@@ -66,12 +66,11 @@ export function HtmlDraftNotice({ refusal }: { refusal: HtmlDraftRefusal }) {
 
         <section className="space-y-2">
           <h3 className="text-xs font-medium text-muted-foreground">
-            Read-only preview · remote images blocked
+            Read-only preview
           </h3>
           {refusal.previewHtml ? (
             <MessageBody
               html={refusal.previewHtml}
-              showRemoteImagesAction={false}
               theme={emailHtmlTheme}
             />
           ) : (

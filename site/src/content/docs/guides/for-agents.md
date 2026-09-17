@@ -181,8 +181,8 @@ errors when they are missing.
 
 `render.html_remote_content` only covers the daemon-side fetches used by the TUI
 and `mxr cat`. The web app renders message HTML in your browser, so the browser
-makes those requests, and its Remote images toggle starts on no matter what that
-key says. Turn it off in the web app as well.
+makes those requests independently of that key. Normal remote images load by
+default; the web sanitizer still removes tiny images and known tracker hosts.
 
 Two paths still leave the machine after that. `mxr unsubscribe` contacts the
 endpoint the sender chose, and adding an OAuth account talks to the provider's

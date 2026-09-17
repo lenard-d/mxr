@@ -36,7 +36,7 @@ export function Topbar() {
         <Button
           size="sm"
           variant="default"
-          className="compose-primary h-10 w-10 p-0 shadow-sm sm:h-8 sm:w-auto sm:px-3"
+          className="compose-primary h-10 w-10 px-0 shadow-sm sm:h-8 sm:w-auto sm:gap-1.5 sm:px-3"
           onClick={() => setComposeOpen(true)}
           aria-label="Compose new email"
         >

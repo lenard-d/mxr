@@ -34,9 +34,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           className="h-9 w-full justify-start gap-2 px-2 text-left"
           aria-label="Account switcher"
         >
-          <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-muted text-primary">
-            <ProviderFavicon email={account.email} />
-          </div>
+          <ProviderFavicon email={account.email} />
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1">
@@ -99,13 +97,13 @@ function ProviderFavicon({ email }: { email?: string }) {
   const [failedSources, setFailedSources] = useState<string[]>([]);
   const src = candidates.find((candidate) => !failedSources.includes(candidate));
 
-  if (!src) return <Mail className="size-3" aria-hidden="true" />;
+  if (!src) return <Mail className="size-5 shrink-0" aria-hidden="true" />;
 
   return (
     <img
       src={src}
       alt=""
-      className="size-3 rounded-sm object-contain"
+      className="size-5 shrink-0 bg-transparent object-contain"
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailedSources((current) => [...current, src])}

@@ -937,7 +937,6 @@ function ThreadMessage({
           <MessageBody
             key={message.id}
             html={html}
-            showRemoteImagesAction={false}
             theme={emailHtmlTheme}
           />
         ) : (
