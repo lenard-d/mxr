@@ -17,6 +17,7 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     date_full: "May 11, 2026, 12:00 AM",
     date_relative: "2 hours ago",
     to: [{ name: "Planetary Escape", email: "planetary@example.com" }],
+    cc: [{ name: "Cc Recipient", email: "cc@example.com" }],
     labels: [{ id: "label-inbox", name: "Inbox", kind: "system" }],
     unread: false,
     starred: false,
@@ -84,6 +85,13 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     "text-decoration-line",
     "underline",
   );
+  await expect(frame.contentFrame().getByAltText("newsletter image")).not.toHaveAttribute(
+    "src",
+    "https://cdn.example.com/newsletter.png",
+  );
+  await expect(frame.contentFrame().getByAltText("tracking pixel")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Load remote images" })).toBeVisible();
+  await page.getByRole("button", { name: "Load remote images" }).click();
   await expect(frame.contentFrame().getByAltText("newsletter image")).toHaveAttribute(
     "src",
     "https://cdn.example.com/newsletter.png",
@@ -115,6 +123,8 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   await expect(reader.getByRole("button", { name: /^mark unread$/i })).toBeVisible();
   await expect(reader.getByRole("button", { name: /^reply$/i })).toBeVisible();
   await expect(reader.getByRole("button", { name: /^reply all$/i })).toBeVisible();
+  await expect(reader.getByRole("button", { name: /^forward$/i })).toBeVisible();
+  await expect(reader.getByRole("button", { name: /^back to mailbox$/i })).toBeVisible();
 });
 
 test("message attachments can be opened and downloaded", async ({ page }) => {

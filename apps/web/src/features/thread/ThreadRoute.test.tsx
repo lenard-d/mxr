@@ -32,7 +32,7 @@ const api = vi.hoisted(() => ({
     >(),
   modifyLabels:
     vi.fn<(messageIds: string[], add: string[], remove: string[]) => Promise<unknown>>(),
-  summarizeThread: vi.fn<() => Promise<unknown>>(),
+  markReadMessages: vi.fn<(messageIds: string[], read: boolean) => Promise<unknown>>(),
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -63,13 +63,12 @@ vi.mock("@/features/mailbox/api", () => ({
   fetchThread: api.fetchThread,
   getThreadBriefing: vi.fn<() => Promise<unknown>>(),
   listCommitments: api.listCommitments,
-  markReadMessages: vi.fn<(messageIds: string[], read: boolean) => Promise<unknown>>(),
+  markReadMessages: api.markReadMessages,
   modifyLabels: api.modifyLabels,
   resolveCommitment: vi.fn<(commitmentId: string) => Promise<unknown>>(),
   shellKey: ["shell"],
   spamMessages: vi.fn<(messageIds: string[]) => Promise<unknown>>(),
   starMessages: vi.fn<(messageIds: string[], starred: boolean) => Promise<unknown>>(),
-  summarizeThread: api.summarizeThread,
   trashMessages: vi.fn<(messageIds: string[]) => Promise<unknown>>(),
   undoMutation: vi.fn<(mutationId: string) => Promise<unknown>>(),
 }));
@@ -182,11 +181,7 @@ describe("ThreadRoute", () => {
       },
     });
     api.modifyLabels.mockResolvedValue({ ok: true, result: { succeeded: 2 } });
-    api.summarizeThread.mockResolvedValue({
-      kind: "ThreadSummary",
-      model: "auto-model",
-      text: "- Auto summary",
-    });
+    api.markReadMessages.mockResolvedValue({ ok: true, result: { succeeded: 1 } });
     api.listCommitments.mockResolvedValue({ commitments: [] });
   });
 
@@ -323,12 +318,79 @@ describe("ThreadRoute", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
+  test("automatically prefers sanitized HTML and offers contextual remote image loading", async () => {
+    const remoteImageUrl = "https://cdn.example.com/hero.jpg";
+    api.fetchThread.mockResolvedValueOnce({
+      ...thread,
+      bodies: [
+        {
+          message_id: "msg-1",
+          text_plain: "plain fallback",
+          reader_text: "reader fallback",
+          text_html: `<p>HTML body</p><img src="${remoteImageUrl}" alt="hero">`,
+          attachments: [],
+        },
+      ],
+    });
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+    const frame = screen.getByTitle("HTML message body");
+    const blockedImage = new DOMParser()
+      .parseFromString(frame.getAttribute("srcdoc") ?? "", "text/html")
+      .querySelector('img[alt="hero"]');
+    expect(blockedImage).not.toHaveAttribute("src");
+    expect(blockedImage).toHaveAttribute("data-original-src", remoteImageUrl);
+    expect(screen.getByRole("button", { name: "Load remote images" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load remote images" }));
+
+    await waitFor(() => {
+      expect(frame).toHaveAttribute("srcdoc", expect.stringContaining(remoteImageUrl));
+      expect(
+        screen.queryByRole("button", { name: "Load remote images" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  test("does not schedule mark-read while a split preview keeps mailbox focus", async () => {
+    useMailboxPane.setState({
+      activePane: "mailbox",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: true,
+    });
+    api.fetchThread.mockResolvedValueOnce({
+      ...thread,
+      thread: { ...thread.thread, unread_count: 1 },
+      messages: thread.messages.map((message, index) =>
+        index === 0 ? { ...message, unread: true } : message,
+      ),
+    });
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+
+    try {
+      renderWithQueryClient(<ThreadRoute />);
+
+      expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+      expect(
+        setTimeoutSpy.mock.calls.some(([, delay]) => delay === 2000),
+      ).toBe(false);
+      expect(api.markReadMessages).not.toHaveBeenCalled();
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
   test("keeps secondary reader actions in the overflow menu", async () => {
     renderWithQueryClient(<ThreadRoute />);
 
-    expect(await screen.findByRole("button", { name: /reply/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /forward/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /summary/i })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Reply" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Forward" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /summary/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("HTML")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reader")).not.toBeInTheDocument();
+    expect(screen.queryByText("Plain")).not.toBeInTheDocument();
+    expect(screen.queryByText("Remote images")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /archive/i })).not.toBeInTheDocument();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: /more message actions/i }), {
@@ -359,48 +421,26 @@ describe("ThreadRoute", () => {
     expect(screen.getByText("1 attachment")).toBeVisible();
   });
 
-  test("renders visible reader shortcuts and colored label chips", async () => {
+  test("renders icon-only reader actions, back control, and colored label chips", async () => {
     renderWithQueryClient(<ThreadRoute />);
 
     expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
 
-    expect(screen.getByRole("button", { name: /reply r/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /forward f/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /summary y/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Reply" })).toHaveAttribute("title", "Reply (r)");
+    expect(screen.getByRole("button", { name: "Forward" })).toHaveAttribute(
+      "title",
+      "Forward (f)",
+    );
+    expect(screen.getByRole("button", { name: "Back to mailbox" })).toHaveAttribute(
+      "title",
+      "Back to mailbox",
+    );
     expect(screen.getByRole("button", { name: /more message actions/i })).toBeVisible();
-    expect(screen.queryByRole("button", { name: /reply all a/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reply all/i })).not.toBeInTheDocument();
 
     const label = screen.getAllByText("Work")[0];
     expect(label).toBeDefined();
     expect(label!).toHaveStyle({ color: "#fb4c2f" });
-  });
-
-  test("renders cached thread summaries inline without regenerating", async () => {
-    api.fetchThread.mockResolvedValueOnce({
-      ...thread,
-      summary: {
-        generated_at: "2026-05-11T10:02:00Z",
-        model: "cached-model",
-        text: "ACTION REQUIRED — approve launch checklist\n\n- Cached useful point",
-      },
-    });
-    renderWithQueryClient(
-      <>
-        <ThreadRoute />
-        <RightRail />
-      </>,
-    );
-
-    expect(await screen.findByText("AI overview")).toBeVisible();
-    expect(screen.getByText("cached-model")).toBeVisible();
-    const cachedSummaryToggle = screen.getByRole("button", {
-      name: /AI overview\s*cached-model/i,
-    });
-    if (cachedSummaryToggle.getAttribute("aria-expanded") === "false") {
-      fireEvent.click(cachedSummaryToggle);
-    }
-    expect(screen.getByText("ACTION REQUIRED — approve launch checklist")).toBeVisible();
-    expect(api.summarizeThread).not.toHaveBeenCalled();
   });
 
   test("renders open commitment chips for the primary sender", async () => {
@@ -426,30 +466,6 @@ describe("ThreadRoute", () => {
       email: "sender@example.com",
       status: "open",
     });
-  });
-
-  test("auto-generates thread summaries inline above the email instead of the right rail", async () => {
-    api.summarizeThread.mockResolvedValueOnce({
-      kind: "ThreadSummary",
-      model: "summary-model",
-      text: "- First useful point\n- Second useful point",
-    });
-    renderWithQueryClient(
-      <>
-        <ThreadRoute />
-        <RightRail />
-      </>,
-    );
-
-    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
-
-    expect(await screen.findByText("AI overview")).toBeVisible();
-    expect(screen.getByText("summary-model")).toBeVisible();
-    const summaryToggle = screen.getByRole("button", { name: /AI overview\s*summary-model/i });
-    if (summaryToggle.getAttribute("aria-expanded") === "false") {
-      fireEvent.click(summaryToggle);
-    }
-    expect(screen.queryByText(/"kind"/)).not.toBeInTheDocument();
   });
 
   test("renders sender profile as relationship stats in the right rail", async () => {

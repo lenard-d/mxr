@@ -54,7 +54,7 @@ describe("HtmlDraftNotice preview", () => {
     expect(srcDoc).toContain("hello");
     // Nothing in the document may still name a remote URL in an attribute the
     // browser fetches. (DOMPurify parks the original in `data-original-src`,
-    // which is inert until the reader explicitly unblocks images.)
+    // which is inert because this read-only draft preview never unblocks images.)
     const preview = new DOMParser().parseFromString(srcDoc, "text/html");
     const fetched = [...preview.querySelectorAll("[src], [srcset], [href], [background]")].filter(
       (node) =>
@@ -63,6 +63,9 @@ describe("HtmlDraftNotice preview", () => {
         ),
     );
     expect(fetched).toEqual([]);
+    expect(
+      screen.queryByRole("button", { name: "Load remote images" }),
+    ).not.toBeInTheDocument();
   });
 
   test("does not let the preview run a script", () => {
