@@ -128,6 +128,7 @@ pub(crate) async fn build_bridge_chrome(
     socket_path: &Path,
     active_lens: &MailboxLensRequest,
 ) -> Result<BridgeChrome, BridgeError> {
+    let account_id = active_lens.account_id.clone();
     let (accounts, total_messages, sync_statuses, repair_required, degraded) =
         match ipc_request(socket_path, Request::GetStatus).await? {
             ResponseData::Status {
@@ -147,26 +148,54 @@ pub(crate) async fn build_bridge_chrome(
             _ => return Err(BridgeError::UnexpectedResponse),
         };
 
-    let labels = match ipc_request(socket_path, Request::ListLabels { account_id: None }).await? {
-        ResponseData::Labels { labels } => labels,
+    let labels = match ipc_request(
+        socket_path,
+        Request::ListLabels {
+            account_id: account_id.clone(),
+        },
+    )
+    .await?
+    {
+        ResponseData::Labels { labels } => labels
+            .into_iter()
+            .filter(|label| match account_id.as_ref() {
+                Some(account_id) => &label.account_id == account_id,
+                None => true,
+            })
+            .collect::<Vec<_>>(),
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
     let searches = match ipc_request(socket_path, Request::ListSavedSearches).await? {
-        ResponseData::SavedSearches { searches } => searches,
+        ResponseData::SavedSearches { searches } => searches
+            .into_iter()
+            .filter(|search| match account_id.as_ref() {
+                Some(account_id) => search
+                    .account_id
+                    .as_ref()
+                    .map_or(true, |search_account_id| search_account_id == account_id),
+                None => true,
+            })
+            .collect::<Vec<_>>(),
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
     let subscriptions = match ipc_request(
         socket_path,
         Request::ListSubscriptions {
-            account_id: None,
+            account_id: account_id.clone(),
             limit: 8,
         },
     )
     .await?
     {
-        ResponseData::Subscriptions { subscriptions } => subscriptions,
+        ResponseData::Subscriptions { subscriptions } => subscriptions
+            .into_iter()
+            .filter(|subscription| match account_id.as_ref() {
+                Some(account_id) => &subscription.account_id == account_id,
+                None => true,
+            })
+            .collect::<Vec<_>>(),
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
@@ -259,7 +288,14 @@ pub(crate) fn build_sidebar_sections(
     let all_mail_total = labels
         .iter()
         .find(|label| matches_system_label(label, "All Mail"))
-        .map_or(total_messages, |label| label.total_count);
+        .map(|label| label.total_count)
+        .unwrap_or_else(|| {
+            if active_lens.account_id.is_some() {
+                0
+            } else {
+                total_messages
+            }
+        });
     let all_mail_unread = labels
         .iter()
         .find(|label| matches_system_label(label, "All Mail"))
@@ -380,8 +416,14 @@ pub(crate) async fn load_mailbox_selection(
 ) -> Result<MailboxSelection, BridgeError> {
     match lens.kind {
         MailboxLensKind::Inbox => {
-            let envelopes =
-                list_envelopes(socket_path, chrome.inbox_label_id.clone(), limit, offset).await?;
+            let envelopes = list_envelopes(
+                socket_path,
+                chrome.inbox_label_id.clone(),
+                lens.account_id.as_ref(),
+                limit,
+                offset,
+            )
+            .await?;
             Ok(MailboxSelection {
                 lens_label: find_inbox_label(&chrome.labels)
                     .map_or_else(|| "Inbox".to_string(), |label| label.name.clone()),
@@ -390,7 +432,8 @@ pub(crate) async fn load_mailbox_selection(
             })
         }
         MailboxLensKind::AllMail => {
-            let envelopes = list_envelopes(socket_path, None, limit, offset).await?;
+            let envelopes =
+                list_envelopes(socket_path, None, lens.account_id.as_ref(), limit, offset).await?;
             let counts = chrome
                 .labels
                 .iter()
@@ -416,23 +459,38 @@ pub(crate) async fn load_mailbox_selection(
                 .as_deref()
                 .ok_or_else(|| BridgeError::Ipc("label lens missing label_id".into()))
                 .and_then(parse_label_id)?;
-            let envelopes =
-                list_envelopes(socket_path, Some(label_id.clone()), limit, offset).await?;
             let label = chrome
                 .labels
                 .iter()
-                .find(|candidate| candidate.id == label_id);
+                .find(|candidate| candidate.id == label_id)
+                .ok_or_else(|| {
+                    BridgeError::Ipc(format!(
+                        "label {label_id} is not available for the requested account"
+                    ))
+                })?;
+            if lens
+                .account_id
+                .as_ref()
+                .is_some_and(|account_id| &label.account_id != account_id)
+            {
+                return Err(BridgeError::Ipc(format!(
+                    "label {label_id} is not available for the requested account"
+                )));
+            }
+            let envelopes = list_envelopes(
+                socket_path,
+                Some(label_id),
+                lens.account_id.as_ref(),
+                limit,
+                offset,
+            )
+            .await?;
             Ok(MailboxSelection {
-                lens_label: label.map_or_else(|| "Label".to_string(), |label| label.name.clone()),
-                counts: label.map_or_else(
-                    || derived_counts(&envelopes),
-                    |label| {
-                        json!({
-                            "unread": label.unread_count,
-                            "total": label.total_count,
-                        })
-                    },
-                ),
+                lens_label: label.name.clone(),
+                counts: json!({
+                    "unread": label.unread_count,
+                    "total": label.total_count,
+                }),
                 envelopes,
             })
         }
@@ -441,13 +499,20 @@ pub(crate) async fn load_mailbox_selection(
                 .saved_search
                 .as_deref()
                 .ok_or_else(|| BridgeError::Ipc("saved search lens missing saved_search".into()))?;
-            let envelopes = run_saved_search(socket_path, name, limit).await?;
+            let search = chrome
+                .searches
+                .iter()
+                .find(|search| search.name == name)
+                .ok_or_else(|| {
+                    BridgeError::Ipc(format!(
+                        "saved search '{name}' is not available for the requested account"
+                    ))
+                })?;
+            let envelopes =
+                run_saved_search(socket_path, &search.name, lens.account_id.as_ref(), limit)
+                    .await?;
             Ok(MailboxSelection {
-                lens_label: chrome
-                    .searches
-                    .iter()
-                    .find(|search| search.name == name)
-                    .map_or_else(|| name.to_string(), |search| search.name.clone()),
+                lens_label: search.name.clone(),
                 counts: derived_counts(&envelopes),
                 envelopes,
             })
@@ -458,7 +523,14 @@ pub(crate) async fn load_mailbox_selection(
                 // supports offset, so this lens paginates (unlike the saved-search
                 // and subscription-overview lenses, whose IPC variants take no
                 // offset).
-                let envelopes = search_envelopes(socket_path, sender_email, limit, offset).await?;
+                let envelopes = search_envelopes(
+                    socket_path,
+                    sender_email,
+                    lens.account_id.as_ref(),
+                    limit,
+                    offset,
+                )
+                .await?;
                 return Ok(MailboxSelection {
                     lens_label: chrome
                         .subscriptions
@@ -477,7 +549,9 @@ pub(crate) async fn load_mailbox_selection(
                 .take(limit as usize)
                 .map(|subscription| subscription.latest_message_id.clone())
                 .collect::<Vec<_>>();
-            let envelopes = list_envelopes_by_message_ids(socket_path, &message_ids).await?;
+            let envelopes =
+                list_envelopes_by_message_ids(socket_path, &message_ids, lens.account_id.as_ref())
+                    .await?;
             Ok(MailboxSelection {
                 lens_label: "Subscriptions".to_string(),
                 counts: json!({

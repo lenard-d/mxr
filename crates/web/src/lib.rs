@@ -147,7 +147,12 @@ async fn mailbox(
     Query(query): Query<MailboxQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
-    let lens = query.lens();
+    let account_id = query
+        .account_id
+        .as_deref()
+        .map(routes_v6::parse_account_id)
+        .transpose()?;
+    let lens = query.lens(account_id);
     let chrome = build_bridge_chrome(&state.config.socket_path, &lens).await?;
     let mailbox = load_mailbox_selection(
         &state.config.socket_path,
@@ -2867,7 +2872,8 @@ async fn list_snoozed(
                 .map(|entry| entry.message_id.clone())
                 .collect::<Vec<_>>();
             let envelopes =
-                list_envelopes_by_message_ids(&state.config.socket_path, &message_ids).await?;
+                list_envelopes_by_message_ids(&state.config.socket_path, &message_ids, None)
+                    .await?;
             Ok(Json(json!({
                 "snoozed": snoozed
                     .into_iter()

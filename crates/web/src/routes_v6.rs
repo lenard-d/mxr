@@ -38,7 +38,7 @@ use std::str::FromStr;
 // ---------------------------------------------------------------------------
 // query helpers
 
-fn parse_account_id(raw: &str) -> Result<AccountId, BridgeError> {
+pub(crate) fn parse_account_id(raw: &str) -> Result<AccountId, BridgeError> {
     AccountId::from_str(raw).map_err(|err| BridgeError::Ipc(format!("invalid account_id: {err}")))
 }
 
