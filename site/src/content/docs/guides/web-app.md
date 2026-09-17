@@ -154,8 +154,8 @@ the daemon TOML config.
 
 When a thread was opened from the mail list, `Esc` closes the reader and
 returns focus to the list unless a row selection is active. Links in
-HTML, reader, and plain views are clickable; remote image loading is
-still controlled separately by the remote-images toggle.
+HTML, reader, and plain views are clickable; normal remote images load by
+default while the sanitizer removes tiny images and known tracker hosts.
 
 Thread summaries use the same daemon request as `mxr summarize`. Opening an
 uncached thread schedules a silent debounced summary request; clicking

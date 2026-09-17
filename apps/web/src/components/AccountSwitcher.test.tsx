@@ -57,7 +57,11 @@ describe("AccountSwitcher", () => {
 
     expect(await screen.findByText("Work")).toBeVisible();
     expect(screen.getByText("work@example.com")).toBeVisible();
-    expect(document.querySelector('img[src="https://example.com/favicon.ico"]')).toBeVisible();
+    const triggerFavicon = document.querySelector('img[src="https://example.com/favicon.ico"]');
+    expect(triggerFavicon).toBeVisible();
+    expect(triggerFavicon).toHaveClass("size-5", "object-contain", "bg-transparent");
+    expect(triggerFavicon).not.toHaveClass("rounded-sm");
+    expect(triggerFavicon?.parentElement).not.toHaveClass("bg-primary-muted", "rounded-md");
 
     fireEvent.pointerDown(screen.getByRole("button", { name: /account switcher/i }), {
       button: 0,
@@ -67,6 +71,13 @@ describe("AccountSwitcher", () => {
     expect(await screen.findByText("default")).toBeVisible();
     expect(screen.getByText("Personal")).toBeVisible();
     expect(screen.getByText("me@example.com")).toBeVisible();
+    const personalItem = screen.getByText("Personal").closest('[role="menuitem"]');
+    expect(personalItem).not.toBeNull();
+    expect(personalItem?.querySelector("img")).toHaveClass(
+      "size-5",
+      "object-contain",
+      "bg-transparent",
+    );
     expect(screen.queryByText(/no accounts loaded/i)).not.toBeInTheDocument();
   });
 });

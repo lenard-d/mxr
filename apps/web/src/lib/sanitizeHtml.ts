@@ -26,7 +26,7 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
       node.remove();
       return;
     }
-    if (node.tagName === "IMG" && opts.allowRemoteImages !== true) {
+    if (node.tagName === "IMG" && opts.allowRemoteImages === false) {
       const src = node.getAttribute("src") ?? "";
       if (isRemoteImageSrc(src)) {
         node.setAttribute("data-original-src", src);
@@ -145,13 +145,6 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
     dom.removeAllHooks();
   }
   return sanitized;
-}
-
-export function hasBlockedRemoteImages(html: string): boolean {
-  if (typeof DOMParser === "undefined") return false;
-  const sanitized = sanitizeHtml(html);
-  const parsedDocument = new DOMParser().parseFromString(sanitized, "text/html");
-  return parsedDocument.querySelector("img[data-original-src]") !== null;
 }
 
 const allowedStyleProperties = new Set([

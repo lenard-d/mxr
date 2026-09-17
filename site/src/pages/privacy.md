@@ -96,12 +96,12 @@ the TUI flips the same switch for the running session without touching the
 config.
 
 The web app is a separate case. It renders message HTML in your browser, so your
-browser issues the image requests, and its "Remote images" toggle starts on
-regardless of `render.html_remote_content`. It does drop some pixels before
-rendering: images whose `width` or `height` attribute is two pixels or less, and
-images from a short list of known tracker hosts. A pixel sized in CSS, or served
-from a host outside that list, loads like any other image. Turn the toggle off
-there as well.
+browser issues the image requests regardless of `render.html_remote_content`.
+Normal remote images load by default, and the web sanitizer drops some pixels
+before rendering: images whose `width` or `height` attribute is two pixels or
+less, and images from a short list of known tracker hosts. A pixel sized in CSS,
+or served from a host outside that list, loads like any other image. The web app
+does not expose a per-message remote-images toggle.
 
 ### Unsubscribing
 

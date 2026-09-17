@@ -45,24 +45,16 @@ describe("HtmlDraftNotice preview", () => {
     expect(frame.getAttribute("srcdoc")).toContain("Ship on Friday.");
   });
 
-  test("does not let the preview request a remote image", () => {
+  test("allows normal remote images in the preview without a toggle", () => {
     const frame = renderNotice(
       '<p>hello</p><img src="https://tracker.example.com/pixel.png?id=42" alt="pixel">',
     );
 
     const srcDoc = frame.getAttribute("srcdoc") ?? "";
     expect(srcDoc).toContain("hello");
-    // Nothing in the document may still name a remote URL in an attribute the
-    // browser fetches. (DOMPurify parks the original in `data-original-src`,
-    // which is inert because this read-only draft preview never unblocks images.)
     const preview = new DOMParser().parseFromString(srcDoc, "text/html");
-    const fetched = [...preview.querySelectorAll("[src], [srcset], [href], [background]")].filter(
-      (node) =>
-        ["src", "srcset", "background"].some((attribute) =>
-          /^https?:/i.test(node.getAttribute(attribute) ?? ""),
-        ),
-    );
-    expect(fetched).toEqual([]);
+    const image = preview.querySelector('img[alt="pixel"]');
+    expect(image).toHaveAttribute("src", "https://tracker.example.com/pixel.png?id=42");
     expect(
       screen.queryByRole("button", { name: "Load remote images" }),
     ).not.toBeInTheDocument();
