@@ -107,7 +107,7 @@ export function MailboxRow({
     >
       {readOnly ? null : (
         <div
-          className="grid size-8 place-items-center"
+          className="mailbox-selection-lane grid size-8 shrink-0 place-items-center"
           data-mailbox-control="selection"
           onClick={(event) => event.stopPropagation()}
         >
@@ -157,8 +157,8 @@ export function MailboxRow({
         {conversationCount ? <ConversationBadge count={conversationCount} /> : null}
       </div>
 
-      <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-        <h2 className="mailbox-row-subject max-w-[48%] shrink-0 truncate text-[length:var(--mail-row-subject-size)] leading-5">
+      <div className="mailbox-row-content flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+        <h2 className="mailbox-row-subject min-w-0 shrink truncate text-[length:var(--mail-row-subject-size)] leading-5">
           {subject}
         </h2>
         <span className="mailbox-row-snippet min-w-0 flex-1 truncate text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
@@ -197,12 +197,12 @@ export function MailboxRow({
         ) : null}
       </div>
 
-      <div className="mailbox-row-trailing relative flex w-[8.25rem] min-w-0 items-center justify-end justify-self-end">
-        <div className="mailbox-row-date max-w-[7rem] truncate whitespace-nowrap text-right font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
+      <div className="mailbox-row-trailing relative flex w-24 min-w-0 items-center justify-end justify-self-end">
+        <div className="mailbox-row-date max-w-full truncate whitespace-nowrap text-right font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
           {row.date_label}
         </div>
         {readOnly ? null : (
-          <div className="mailbox-row-quick-actions absolute right-0 flex items-center gap-1 bg-inherit opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto">
+          <div className="mailbox-row-quick-actions pointer-events-none absolute right-0 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
             <QuickAction
               icon={MailOpen}
               label={row.unread ? "Mark read" : "Mark unread"}
@@ -300,7 +300,7 @@ function QuickAction({
       variant="ghost"
       size="icon"
       data-mailbox-control="quick-action"
-      className="size-10 md:size-6"
+      className="size-10 rounded-md md:size-8"
       aria-label={label}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
@@ -308,7 +308,7 @@ function QuickAction({
         onClick();
       }}
     >
-      <Icon className="size-3" />
+      <Icon className="size-4" />
     </Button>
   );
 }

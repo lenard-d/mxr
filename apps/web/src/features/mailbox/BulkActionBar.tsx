@@ -55,19 +55,21 @@ export function BulkActionBar({ rows }: BulkActionBarProps = {}) {
         aria-label="Mailbox selection and bulk actions"
       >
         {hasLoadedRows ? (
-          <Checkbox
-            checked={allLoadedSelected ? true : someLoadedSelected ? "indeterminate" : false}
-            onCheckedChange={(checked) => {
-              if (checked === true) selectMany(rows.map((row) => row.id));
-              else clear();
-            }}
-            aria-label={
-              allLoadedSelected ? "Deselect all messages in view" : "Select all messages in view"
-            }
-            aria-describedby="mailbox-selection-status"
-            data-testid="mailbox-master-checkbox"
-            className="mailbox-checkbox mr-1 size-4 shrink-0 rounded-none"
-          />
+          <div className="mailbox-selection-lane grid size-8 shrink-0 place-items-center">
+            <Checkbox
+              checked={allLoadedSelected ? true : someLoadedSelected ? "indeterminate" : false}
+              onCheckedChange={(checked) => {
+                if (checked === true) selectMany(rows.map((row) => row.id));
+                else clear();
+              }}
+              aria-label={
+                allLoadedSelected ? "Deselect all messages in view" : "Select all messages in view"
+              }
+              aria-describedby="mailbox-selection-status"
+              data-testid="mailbox-master-checkbox"
+              className="mailbox-checkbox size-4 rounded-none"
+            />
+          </div>
         ) : null}
         <div
           id="mailbox-selection-status"

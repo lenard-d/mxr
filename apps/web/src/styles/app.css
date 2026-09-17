@@ -121,6 +121,12 @@
   color: hsl(var(--background));
 }
 
+.mailbox-checkbox > span > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 3;
+}
+
 .mailbox-row[data-unread="true"] {
   background: hsl(var(--foreground) / 0.055);
   color: hsl(var(--foreground));
@@ -167,9 +173,24 @@
     0 0 9px hsl(var(--primary) / 0.16);
 }
 
+.mailbox-row:hover .mailbox-checkbox[data-state="checked"],
+.mailbox-row:hover .mailbox-checkbox[data-state="indeterminate"] {
+  color: hsl(var(--background));
+}
+
+.mailbox-row:not([data-read-only="true"]):hover .mailbox-row-content {
+  padding-right: 3rem;
+}
+
+@media (max-width: 767px) {
+  .mailbox-row:not([data-read-only="true"]):hover .mailbox-row-content {
+    padding-right: 4.5rem;
+  }
+}
+
 .mailbox-row-trailing,
 .mailbox-row-quick-actions {
-  background: inherit;
+  background: transparent;
 }
 
 .mailbox-row:hover .mailbox-row-date {
