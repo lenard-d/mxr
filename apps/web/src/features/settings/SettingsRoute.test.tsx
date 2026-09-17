@@ -5,7 +5,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { ComposeSettingsSection, LlmSettingsSection } from "./SettingsRoute";
+import { ComposeSettingsSection, KeybindingsSection, LlmSettingsSection } from "./SettingsRoute";
+import { defaultShortcutPreferences } from "@/lib/keybindings";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const api = vi.hoisted(() => ({
   fetch: vi.fn<(path: string, opts?: unknown) => Promise<unknown>>(),
@@ -282,5 +284,34 @@ describe("ComposeSettingsSection", () => {
         body: { name: "formal", body: "Regards" },
       });
     });
+  });
+});
+
+describe("KeybindingsSection", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useUiPrefs.setState({ keybindings: defaultShortcutPreferences() });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    useUiPrefs.setState({ keybindings: defaultShortcutPreferences() });
+  });
+
+  test("edits mailbox shortcuts, flags duplicates, and resets to defaults", () => {
+    render(<KeybindingsSection />);
+
+    const archive = screen.getByLabelText("Archive shortcut");
+    fireEvent.change(archive, { target: { value: "q" } });
+    expect(useUiPrefs.getState().keybindings["mailbox.archive"]).toBe("q");
+
+    fireEvent.change(screen.getByLabelText("Move to next message shortcut"), {
+      target: { value: "q" },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(/already used/i);
+    expect(useUiPrefs.getState().keybindings["mailbox.move-next"]).toBe("j");
+
+    fireEvent.click(screen.getByRole("button", { name: /reset all to defaults/i }));
+    expect(useUiPrefs.getState().keybindings["mailbox.archive"]).toBe("e");
   });
 });

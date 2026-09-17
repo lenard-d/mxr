@@ -12,11 +12,18 @@ import type { KeyBindingMap } from "tinykeys";
 
 import { getRegistry, setRuntimeNavigate } from "@/lib/actions";
 import type { ActionContext } from "@/lib/actions";
+import type { ActionScope } from "@/lib/actions/types";
 import { hasMailThread } from "@/features/mailbox/location";
+import {
+  getEffectiveActionShortcuts,
+  hasShortcutInScope,
+  isShortcutSuppressed,
+  type ShortcutPreferences,
+} from "@/lib/keybindings";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
-import { useModals } from "@/state/modalStore";
 import { useSelection } from "@/state/selectionStore";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 interface Navigator {
   navigate: (to: string) => void;
@@ -35,24 +42,33 @@ function buildContextSnapshot(): ActionContext {
   };
 }
 
-function suppressedInTextField(e: KeyboardEvent): boolean {
-  const t = e.target as HTMLElement | null;
-  if (!t) return false;
-  return t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
-}
-
-export function buildGlobalKeymap(nav: Navigator): KeyBindingMap {
+export function buildGlobalKeymap(
+  nav: Navigator,
+  preferences: ShortcutPreferences = useUiPrefs.getState().keybindings,
+): KeyBindingMap {
   setRuntimeNavigate(nav);
   const reg = getRegistry();
   const map: KeyBindingMap = {};
-  for (const [chord, byScope] of Object.entries(reg.getShortcutMap())) {
+  const bindings = new Map<string, Partial<Record<ActionScope, string>>>();
+  for (const action of reg.all()) {
+    if (action.paletteOnly || action.displayOnly) continue;
+    const scope = action.scope ?? "global";
+    for (const shortcut of getEffectiveActionShortcuts(action, preferences)) {
+      const byScope = bindings.get(shortcut) ?? {};
+      if (byScope[scope] && byScope[scope] !== action.id) continue;
+      byScope[scope] = action.id;
+      bindings.set(shortcut, byScope);
+    }
+  }
+  for (const [chord, byScope] of bindings) {
     map[chord] = (e) => {
       // A page component that already handled (and preventDefault-ed) this
       // key wins over the global binding.
       if (e.defaultPrevented) return;
-      if (suppressedInTextField(e)) return;
+      if (isShortcutSuppressed(e)) return;
       // Resolve at dispatch time: active scope first, then global fallback.
       const scope = useKeyScope.getState().activeScope();
+      if (scope === "mailbox" && hasShortcutInScope(chord, scope, preferences)) return;
       const actionId = byScope[scope] ?? byScope.global;
       const action = actionId ? reg.get(actionId) : undefined;
       if (!action) return;
@@ -60,11 +76,5 @@ export function buildGlobalKeymap(nav: Navigator): KeyBindingMap {
       void action.run(buildContextSnapshot());
     };
   }
-  // Alt-binding for command palette — colon (:) opens it, mirroring the TUI.
-  map["Shift+Semicolon"] = (e) => {
-    if (suppressedInTextField(e)) return;
-    e.preventDefault();
-    useModals.getState().setCommandPaletteOpen(true);
-  };
   return map;
 }

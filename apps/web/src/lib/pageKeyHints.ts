@@ -8,6 +8,11 @@
  */
 
 import type { ActionContext } from "./actions/types";
+import {
+  formatShortcutForDisplay,
+  MAILBOX_SHORTCUT_DEFINITIONS,
+} from "./keybindings";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 export interface PageHint {
   key: string;
@@ -46,20 +51,6 @@ const SIDEBAR_HINTS: PageHint[] = [
   { key: "1-0", label: "Sidebar nav" },
 ];
 
-const MAILBOX_HINTS: PageHint[] = [
-  { key: "j/k", label: "Move" },
-  { key: "gg/G", label: "Top/bottom" },
-  { key: "o", label: "Open" },
-  { key: "x", label: "Select" },
-  { key: "*a/*n", label: "Select all/none" },
-  { key: "h", label: "Sidebar" },
-  { key: "e", label: "Archive" },
-  { key: "s", label: "Star" },
-  { key: "m", label: "Read/unread" },
-  { key: "R/U", label: "Mark read/unread" },
-  { key: "#/Del", label: "Trash" },
-];
-
 const COMPOSE_HINTS: PageHint[] = [
   { key: "Esc", label: "Leave dialogs" },
   { key: "Tab", label: "Move fields" },
@@ -78,7 +69,15 @@ export function pageHintsForRoute(ctx: ActionContext): PageHintSection[] {
     return [{ title: "Sidebar shortcuts", hints: SIDEBAR_HINTS }];
   }
   if (ctx.path.startsWith("/m/")) {
-    return [{ title: "Mailbox shortcuts", hints: MAILBOX_HINTS }];
+    return [{ title: "Mailbox shortcuts", hints: mailboxHints() }];
   }
   return [];
+}
+
+function mailboxHints(): PageHint[] {
+  const preferences = useUiPrefs.getState().keybindings;
+  return MAILBOX_SHORTCUT_DEFINITIONS.map((definition) => ({
+    key: formatShortcutForDisplay(preferences[definition.id]),
+    label: definition.label,
+  }));
 }

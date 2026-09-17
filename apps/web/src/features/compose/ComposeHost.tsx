@@ -73,6 +73,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
         "flex min-h-0 flex-col overflow-hidden border border-border bg-background",
         surface === "inline" ? "max-h-[60vh] rounded-lg" : "h-full rounded-xl shadow-2xl",
       )}
+      data-composer="true"
       onKeyDown={(event) => {
         if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
           event.preventDefault();
@@ -127,6 +128,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       role="dialog"
       aria-modal="false"
       aria-label={intent.title}
+      data-composer="true"
       className={cn(
         "fixed z-40 flex flex-col",
         fullscreen

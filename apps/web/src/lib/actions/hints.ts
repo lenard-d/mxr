@@ -9,6 +9,8 @@
 import { useMemo } from "react";
 
 import { type PageHintSection, pageHintsForRoute } from "@/lib/pageKeyHints";
+import { getEffectiveShortcut } from "@/lib/keybindings";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import "./catalog";
 import { getRegistry } from "./registry";
@@ -59,13 +61,14 @@ export function actionShortcutSections(
   pageSections: PageHintSection[] = [],
 ): ShortcutSection[] {
   const reg = getRegistry();
-  const visible = reg
-    .getVisibleActions(ctx)
-    .filter((a) => a.shortcut !== undefined);
+  const preferences = useUiPrefs.getState().keybindings;
+  const visible = reg.getVisibleActions(ctx);
 
   const grouped = new Map<ActionGroup, ShortcutHint[]>();
   for (const action of visible) {
-    const hint = { key: formatChord(action.shortcut!), label: action.label };
+    const shortcut = getEffectiveShortcut(action, preferences);
+    if (!shortcut) continue;
+    const hint = { key: formatChord(shortcut), label: action.label };
     const existing = grouped.get(action.group);
     if (existing) {
       existing.push(hint);
@@ -88,10 +91,11 @@ export function actionShortcutSections(
 }
 
 export function useActionShortcutSections(ctx: ActionContext): ShortcutSection[] {
+  const keybindings = useUiPrefs((state) => state.keybindings);
   const pageSections = pageHintsForRoute(ctx);
   return useMemo(
     () => actionShortcutSections(ctx, pageSections),
-    [ctx, pageSections],
+    [ctx, keybindings, pageSections],
   );
 }
 
@@ -125,6 +129,8 @@ export function formatChord(chord: ShortcutChord): string {
   return chord
     .replace(/Shift\+Slash/g, "?")
     .replace(/Shift\+Semicolon/g, ":")
+    .replace(/Shift\+(?:Key)?([a-z])/g, (_, letter) => letter.toUpperCase())
+    .replace(/Control\+/g, "Ctrl+")
     .replace(/Key([A-Z])/g, (_, letter) => letter.toLowerCase())
     .replace(/Digit(\d)/g, (_, digit) => digit)
     .replace(/Slash/g, "/")
