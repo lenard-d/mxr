@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 pub(crate) async fn list_envelopes(
     socket_path: &Path,
     label_id: Option<LabelId>,
+    account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
 ) -> Result<Vec<Envelope>, BridgeError> {
@@ -15,14 +16,16 @@ pub(crate) async fn list_envelopes(
         socket_path,
         Request::ListEnvelopes {
             label_id,
-            account_id: None,
+            account_id: account_id.cloned(),
             limit,
             offset,
         },
     )
     .await?
     {
-        ResponseData::Envelopes { envelopes } => Ok(envelopes),
+        ResponseData::Envelopes { envelopes } => {
+            Ok(filter_envelopes_by_account(envelopes, account_id))
+        }
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -30,6 +33,7 @@ pub(crate) async fn list_envelopes(
 pub(crate) async fn list_envelopes_by_message_ids(
     socket_path: &Path,
     message_ids: &[MessageId],
+    account_id: Option<&AccountId>,
 ) -> Result<Vec<Envelope>, BridgeError> {
     if message_ids.is_empty() {
         return Ok(Vec::new());
@@ -42,8 +46,24 @@ pub(crate) async fn list_envelopes_by_message_ids(
     )
     .await?
     {
-        ResponseData::Envelopes { envelopes } => Ok(reorder_envelopes(envelopes, message_ids)),
+        ResponseData::Envelopes { envelopes } => Ok(reorder_envelopes(
+            filter_envelopes_by_account(envelopes, account_id),
+            message_ids,
+        )),
         _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+fn filter_envelopes_by_account(
+    envelopes: Vec<Envelope>,
+    account_id: Option<&AccountId>,
+) -> Vec<Envelope> {
+    match account_id {
+        Some(account_id) => envelopes
+            .into_iter()
+            .filter(|envelope| &envelope.account_id == account_id)
+            .collect(),
+        None => envelopes,
     }
 }
 
@@ -70,6 +90,7 @@ pub(crate) async fn list_bodies_by_message_ids(
 pub(crate) async fn run_saved_search(
     socket_path: &Path,
     name: &str,
+    account_id: Option<&AccountId>,
     limit: u32,
 ) -> Result<Vec<Envelope>, BridgeError> {
     match ipc_request(
@@ -77,13 +98,13 @@ pub(crate) async fn run_saved_search(
         Request::RunSavedSearch {
             name: name.to_string(),
             limit,
-            account_id: None,
+            account_id: account_id.cloned(),
         },
     )
     .await?
     {
         ResponseData::SearchResults { results, .. } => {
-            search_result_envelopes(socket_path, &results).await
+            search_result_envelopes(socket_path, &results, account_id).await
         }
         _ => Err(BridgeError::UnexpectedResponse),
     }
@@ -92,6 +113,7 @@ pub(crate) async fn run_saved_search(
 pub(crate) async fn search_envelopes(
     socket_path: &Path,
     query: &str,
+    account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
 ) -> Result<Vec<Envelope>, BridgeError> {
@@ -101,7 +123,7 @@ pub(crate) async fn search_envelopes(
             query: query.to_string(),
             limit,
             offset,
-            account_id: None,
+            account_id: account_id.cloned(),
             mode: Some(SearchMode::Lexical),
             sort: Some(SortOrder::DateDesc),
             explain: false,
@@ -110,7 +132,7 @@ pub(crate) async fn search_envelopes(
     .await?
     {
         ResponseData::SearchResults { results, .. } => {
-            search_result_envelopes(socket_path, &results).await
+            search_result_envelopes(socket_path, &results, account_id).await
         }
         _ => Err(BridgeError::UnexpectedResponse),
     }
@@ -119,6 +141,7 @@ pub(crate) async fn search_envelopes(
 pub(crate) async fn search_result_envelopes(
     socket_path: &Path,
     results: &[SearchResultItem],
+    account_id: Option<&AccountId>,
 ) -> Result<Vec<Envelope>, BridgeError> {
     let message_ids = results
         .iter()
@@ -135,7 +158,10 @@ pub(crate) async fn search_result_envelopes(
     )
     .await?
     {
-        ResponseData::Envelopes { envelopes } => Ok(reorder_envelopes(envelopes, &message_ids)),
+        ResponseData::Envelopes { envelopes } => Ok(reorder_envelopes(
+            filter_envelopes_by_account(envelopes, account_id),
+            &message_ids,
+        )),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }

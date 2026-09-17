@@ -1,4 +1,4 @@
-use mxr_core::SearchMode;
+use mxr_core::{AccountId, SearchMode};
 use mxr_protocol::LlmConfigData;
 use serde::Deserialize;
 
@@ -18,6 +18,8 @@ pub(super) struct MailboxQuery {
     pub(super) saved_search: Option<String>,
     #[serde(default)]
     pub(super) sender_email: Option<String>,
+    #[serde(default)]
+    pub(super) account_id: Option<String>,
     #[serde(default)]
     pub(super) token: Option<String>,
 }
@@ -56,15 +58,17 @@ pub(super) struct MailboxLensRequest {
     pub(super) label_id: Option<String>,
     pub(super) saved_search: Option<String>,
     pub(super) sender_email: Option<String>,
+    pub(super) account_id: Option<AccountId>,
 }
 
 impl MailboxQuery {
-    pub(super) fn lens(&self) -> MailboxLensRequest {
+    pub(super) fn lens(&self, account_id: Option<AccountId>) -> MailboxLensRequest {
         MailboxLensRequest {
             kind: self.lens_kind.clone(),
             label_id: self.label_id.clone(),
             saved_search: self.saved_search.clone(),
             sender_email: self.sender_email.clone(),
+            account_id,
         }
     }
 }
