@@ -28,7 +28,13 @@ export function ThemePicker() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-10 md:size-9" aria-label="Theme">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-10 md:size-9"
+          aria-label="Theme"
+          title="Theme"
+        >
           {resolvedTheme === "light" || resolvedTheme === "paper" ? (
             <Sun className="size-3.5" />
           ) : (

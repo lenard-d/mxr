@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type CSSProperties } from "react";
 import { toast } from "sonner";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -27,6 +27,7 @@ const G_A_MIGRATION_KEY = "mxr.shortcut.ga-migration-shown.v1";
 
 export function AppShell() {
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const sidebarWidth = useUiPrefs((s) => s.sidebarWidth);
   const rightRail = useModals((s) => s.rightRail);
   const closeRightRail = useModals((s) => s.closeRightRail);
   const helpOpen = useModals((s) => s.helpOpen);
@@ -78,6 +79,7 @@ export function AppShell() {
         className="app-shell"
         data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
         data-rightrail-open={rightRail ? "true" : "false"}
+        style={{ "--shell-sidebar-w": `${sidebarWidth}px` } as CSSProperties}
       >
         <div className="app-shell-sidebar">
           <Sidebar />

@@ -6,9 +6,10 @@ import { cn } from "@/lib/utils";
 
 interface ConnectionPillProps {
   compact?: boolean;
+  className?: string;
 }
 
-export function ConnectionPill({ compact = false }: ConnectionPillProps) {
+export function ConnectionPill({ compact = false, className }: ConnectionPillProps) {
   const status = useConnectionStore((s) => s.state);
   const lastErrorAt = useConnectionStore((s) => s.lastErrorAt);
   const errorMessage = useConnectionStore((s) => s.errorMessage);
@@ -46,8 +47,10 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
             "inline-flex items-center gap-1 font-mono text-2xs",
             tone,
             compact && "justify-center",
+            className,
           )}
           aria-label={compact ? `Connection: ${label}` : undefined}
+          role={compact ? "img" : undefined}
         >
           <Icon
             className={cn(

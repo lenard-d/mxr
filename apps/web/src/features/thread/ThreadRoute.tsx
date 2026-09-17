@@ -26,7 +26,9 @@ import {
 } from "lucide-react";
 import {
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -88,7 +90,12 @@ import {
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
-import { useUiPrefs } from "@/state/uiPrefsStore";
+import {
+  DEFAULT_THREAD_SPLIT_RATIO,
+  THREAD_SPLIT_RATIO_MAX,
+  THREAD_SPLIT_RATIO_MIN,
+  useUiPrefs,
+} from "@/state/uiPrefsStore";
 
 interface LabelChange {
   add: string[];
@@ -103,25 +110,137 @@ interface ThreadCommitmentView {
   byWhen?: string | null;
 }
 
+const THREAD_MAILBOX_MIN_WIDTH = 320;
+const THREAD_SPLIT_KEYBOARD_STEP = 0.05;
+
 export function ThreadRoute() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const readerLayout = useUiPrefs((state) => state.readerLayout);
+  const threadSplitRatio = useUiPrefs((state) => state.threadSplitRatio);
+  const setThreadSplitRatio = useUiPrefs((state) => state.setThreadSplitRatio);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const location = parseMailLocation(pathname);
   const threadId = location?.threadId ?? "";
   const mailboxPath = location ? mailboxPathFromLocation(location) : "/";
   const readerFull = readerLayout === "full";
+  const splitStyle: CSSProperties | undefined = readerFull
+    ? undefined
+    : {
+        width: `${threadSplitRatio * 100}%`,
+        minWidth: `${THREAD_MAILBOX_MIN_WIDTH}px`,
+      };
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+    <div
+      ref={splitContainerRef}
+      className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+      data-thread-split-ratio={readerFull ? undefined : threadSplitRatio}
+    >
       <div
         className={cn(
-          "hidden w-[520px] shrink-0 xl:w-[560px] 2xl:w-[600px]",
+          "hidden min-w-0 shrink-0",
           readerFull ? "lg:hidden" : "lg:flex",
         )}
+        style={splitStyle}
       >
         <MailboxRoute />
       </div>
+      {!readerFull ? (
+        <ThreadSplitResizeHandle
+          containerRef={splitContainerRef}
+          ratio={threadSplitRatio}
+          onChange={setThreadSplitRatio}
+          onReset={() => setThreadSplitRatio(DEFAULT_THREAD_SPLIT_RATIO)}
+        />
+      ) : null}
       <ThreadReader threadId={threadId} mailboxPath={mailboxPath} />
     </div>
+  );
+}
+
+interface ThreadSplitResizeHandleProps {
+  containerRef: RefObject<HTMLDivElement | null>;
+  ratio: number;
+  onChange: (ratio: number) => void;
+  onReset: () => void;
+}
+
+function ThreadSplitResizeHandle({
+  containerRef,
+  ratio,
+  onChange,
+  onReset,
+}: ThreadSplitResizeHandleProps) {
+  const drag = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
+
+  function endPointerResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    if (
+      typeof event.currentTarget.hasPointerCapture === "function" &&
+      event.currentTarget.hasPointerCapture(event.pointerId) &&
+      typeof event.currentTarget.releasePointerCapture === "function"
+    ) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    drag.current = null;
+  }
+
+  return (
+    <button
+      type="button"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize mailbox pane"
+      aria-valuemin={THREAD_SPLIT_RATIO_MIN * 100}
+      aria-valuemax={THREAD_SPLIT_RATIO_MAX * 100}
+      aria-valuenow={ratio * 100}
+      aria-valuetext={`${Math.round(ratio * 100)}% mailbox width`}
+      tabIndex={0}
+      data-testid="thread-split-resize-handle"
+      className="hidden h-full w-2 cursor-col-resize touch-none items-center justify-center border-0 bg-transparent p-0 outline-none transition-colors hover:bg-border focus-visible:bg-primary/30 lg:flex"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        drag.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startRatio: ratio,
+        };
+        if (typeof event.currentTarget.setPointerCapture === "function") {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }
+      }}
+      onPointerMove={(event) => {
+        const current = drag.current;
+        const width = containerRef.current?.getBoundingClientRect().width ?? 0;
+        if (!current || current.pointerId !== event.pointerId || width <= 0) return;
+        event.preventDefault();
+        onChange(current.startRatio + (event.clientX - current.startX) / width);
+      }}
+      onPointerUp={endPointerResize}
+      onPointerCancel={endPointerResize}
+      onLostPointerCapture={() => {
+        drag.current = null;
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onChange(ratio - THREAD_SPLIT_KEYBOARD_STEP);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onChange(ratio + THREAD_SPLIT_KEYBOARD_STEP);
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          onChange(THREAD_SPLIT_RATIO_MIN);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          onChange(THREAD_SPLIT_RATIO_MAX);
+        }
+      }}
+      onDoubleClick={onReset}
+    >
+      <span className="h-full w-px bg-border" aria-hidden="true" />
+    </button>
   );
 }
 

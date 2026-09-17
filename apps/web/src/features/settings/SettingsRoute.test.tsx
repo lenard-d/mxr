@@ -5,7 +5,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { ComposeSettingsSection, LlmSettingsSection } from "./SettingsRoute";
+import {
+  ComposeSettingsSection,
+  LlmSettingsSection,
+  SidebarSettingsSection,
+} from "./SettingsRoute";
+import { defaultSidebarVisibility, useUiPrefs } from "@/state/uiPrefsStore";
 
 const api = vi.hoisted(() => ({
   fetch: vi.fn<(path: string, opts?: unknown) => Promise<unknown>>(),
@@ -187,6 +192,25 @@ describe("LlmSettingsSection", () => {
     expect(screen.getByText(/not editable llm config yet/i)).toBeVisible();
     expect(screen.getByRole("button", { name: /daemon update required/i })).toBeDisabled();
     expect(screen.queryByText(/could not load llm config/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("SidebarSettingsSection", () => {
+  beforeEach(() => {
+    useUiPrefs.setState({ sidebarVisibility: { ...defaultSidebarVisibility } });
+  });
+
+  test("shows configurable tools without offering a way to hide Mail or Settings", () => {
+    renderWithQueryClient(<SidebarSettingsSection />);
+
+    expect(screen.getByText("Reply queue")).toBeVisible();
+    expect(screen.getByRole("switch", { name: "Show Reply queue in sidebar" })).toBeChecked();
+    expect(screen.getByText(/Mail and Settings stay available/i)).toBeVisible();
+    expect(screen.queryByRole("switch", { name: /Show Mail in sidebar/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Show Reply queue in sidebar" }));
+
+    expect(useUiPrefs.getState().sidebarVisibility["reply-queue"]).toBe(false);
   });
 });
 
