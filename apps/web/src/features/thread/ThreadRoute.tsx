@@ -3,6 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { find as findLinks } from "linkifyjs";
 import {
   Archive,
+  ArrowLeft,
   Ban,
   ChevronDown,
   Clock,
@@ -116,7 +117,7 @@ export function ThreadRoute() {
   const mailboxPath = `/${parts.slice(0, -1).join("/")}`;
   const readerFull = readerLayout === "full";
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 bg-background">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
       <div
         className={cn(
           "hidden w-[520px] shrink-0 xl:w-[560px] 2xl:w-[600px]",
@@ -603,8 +604,23 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         setActivePane("reader");
       }}
     >
-      <header className="border-b border-border px-5 py-3 lg:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <header className="border-b border-border px-4 py-3 sm:px-5 lg:px-6">
+        <div className="mb-3 flex items-center gap-2 lg:hidden">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-10 shrink-0"
+            aria-label="Back to mailbox"
+            onClick={() => void navigate({ to: mailboxPath })}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            Back to mailbox
+          </span>
+        </div>
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-pretty text-lg font-semibold tracking-tight">
@@ -627,7 +643,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               </span>
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-start gap-2.5 lg:justify-end">
             <div className="flex items-center gap-1.5">
               <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
                 View
@@ -641,7 +657,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
                 aria-label="Message body view"
               >
                 {(["html", "reader", "plain"] as const).map((viewMode) => (
-                  <ToggleGroupItem key={viewMode} value={viewMode} size="sm">
+                  <ToggleGroupItem
+                    key={viewMode}
+                    value={viewMode}
+                    size="sm"
+                    className="min-h-10 lg:min-h-0"
+                  >
                     {mode === viewMode ? <Check className="size-3" /> : null}
                     {viewMode === "html" ? "HTML" : viewMode === "reader" ? "Reader" : "Plain"}
                   </ToggleGroupItem>
@@ -649,7 +670,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               </ToggleGroup>
             </div>
             <label
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-border/90 bg-muted/70 px-2.5 text-xs font-medium text-foreground shadow-sm"
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-border/90 bg-muted/70 px-2.5 text-xs font-medium text-foreground shadow-sm lg:h-8"
               htmlFor="thread-remote-images"
             >
               <span>Remote images</span>
@@ -663,7 +684,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
           </div>
         </div>
         <div
-          className="mt-3 flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-hidden border-t border-border/70 pt-3"
+          className="mt-3 flex min-w-0 max-w-full flex-wrap items-center justify-start gap-2 overflow-visible border-t border-border/70 pt-3 lg:justify-end"
           role="toolbar"
           aria-label="Message actions"
         >
@@ -978,7 +999,7 @@ function ReaderActionMenu({ actions }: { actions: ReaderOverflowAction[] }) {
         <Button
           variant="outline"
           size="icon"
-          className="h-9 w-9 shrink-0 rounded-md border-border/90 bg-muted/60 shadow-sm hover:border-primary/60 hover:bg-primary/15"
+          className="h-10 w-10 shrink-0 rounded-md border-border/90 bg-muted/60 shadow-sm hover:border-primary/60 hover:bg-primary/15 lg:h-9 lg:w-9"
           aria-label="More message actions"
         >
           <MoreVertical className="size-4" />
@@ -1017,7 +1038,7 @@ function ReaderActionButton({
       variant="outline"
       size="sm"
       className={cn(
-        "h-9 rounded-md border-border/90 bg-muted/60 px-3 text-xs shadow-sm hover:border-primary/60 hover:bg-primary/15",
+        "h-10 rounded-md border-border/90 bg-muted/60 px-3 text-xs shadow-sm hover:border-primary/60 hover:bg-primary/15 lg:h-9",
         "shrink-0",
         className,
       )}
@@ -1064,7 +1085,7 @@ function ThreadMessage({
       )}
       data-testid="thread-message"
     >
-      <div className="flex items-start justify-between gap-4 py-2.5">
+      <div className="flex min-w-0 items-start justify-between gap-2 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="break-words text-base font-medium">{message.sender}</div>
@@ -1081,7 +1102,7 @@ function ThreadMessage({
           </div>
         </div>
         <time
-          className="shrink-0 text-right font-mono text-xs text-muted-foreground"
+          className="max-w-[42%] shrink-0 truncate text-right font-mono text-xs text-muted-foreground"
           dateTime={message.date}
           title={message.date_full}
         >

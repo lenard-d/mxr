@@ -27,6 +27,7 @@ const G_A_MIGRATION_KEY = "mxr.shortcut.ga-migration-shown.v1";
 export function AppShell() {
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
   const rightRail = useModals((s) => s.rightRail);
+  const closeRightRail = useModals((s) => s.closeRightRail);
   const helpOpen = useModals((s) => s.helpOpen);
   const setHelpOpen = useModals((s) => s.setHelpOpen);
   const activePane = useMailboxPane((s) => s.activePane);
@@ -89,7 +90,12 @@ export function AppShell() {
         </ErrorBoundary>
       </div>
       {rightRail ? (
-        <div className="app-shell-rightrail">
+        <div
+          className="app-shell-rightrail"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeRightRail();
+          }}
+        >
           <RightRail />
         </div>
       ) : null}

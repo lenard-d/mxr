@@ -14,11 +14,14 @@ export function Toaster() {
       closeButton
       toastOptions={{
         classNames: {
-          toast: "rounded-md border border-border bg-popover text-popover-foreground shadow-lg",
+          toast:
+            "relative max-w-[min(420px,calc(100vw-1rem))] rounded-md border border-border bg-popover pr-11 text-popover-foreground shadow-lg",
           title: "text-sm font-medium",
           description: "text-2xs text-muted-foreground",
-          actionButton: "bg-primary text-primary-foreground hover:bg-primary/90",
-          cancelButton: "bg-muted text-muted-foreground",
+          closeButton:
+            "!absolute !right-2 !top-2 !flex !size-8 !items-center !justify-center !rounded-md !border-border !bg-muted !text-foreground hover:!bg-accent",
+          actionButton: "min-h-8 bg-primary text-primary-foreground hover:bg-primary/90",
+          cancelButton: "min-h-8 bg-muted text-muted-foreground",
         },
       }}
     />

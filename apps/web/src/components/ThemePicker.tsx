@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useUiPrefs, type Theme } from "@/state/uiPrefsStore";
+import { isTheme, resolveTheme, useUiPrefs, type Theme } from "@/state/uiPrefsStore";
 
 const themes: { id: Theme; label: string; description: string }[] = [
   { id: "midnight", label: "Midnight", description: "Default dark, sky cyan accent" },
@@ -24,11 +24,12 @@ const themes: { id: Theme; label: string; description: string }[] = [
 export function ThemePicker() {
   const theme = useUiPrefs((s) => s.theme);
   const setTheme = useUiPrefs((s) => s.setTheme);
+  const resolvedTheme = resolveTheme(theme);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Theme">
-          {theme === "light" || theme === "paper" ? (
+        <Button variant="ghost" size="icon" className="size-10 md:size-9" aria-label="Theme">
+          {resolvedTheme === "light" || resolvedTheme === "paper" ? (
             <Sun className="size-3.5" />
           ) : (
             <Moon className="size-3.5" />
@@ -38,12 +39,17 @@ export function ThemePicker() {
       <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuLabel>Theme</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as Theme)}>
+        <DropdownMenuRadioGroup
+          value={theme}
+          onValueChange={(value) => {
+            if (isTheme(value)) setTheme(value);
+          }}
+        >
           {themes.map((t) => (
             <DropdownMenuRadioItem
               key={t.id}
               value={t.id}
-              className="flex flex-col items-start py-2"
+              className="flex min-h-10 flex-col items-start py-2"
             >
               <span className="text-xs font-medium">{t.label}</span>
               <span className="text-2xs text-muted-foreground">{t.description}</span>

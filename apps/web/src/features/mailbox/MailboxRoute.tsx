@@ -27,7 +27,7 @@ export function MailboxRoute() {
 
   if (mailbox.isLoading) {
     return (
-      <div className="flex flex-1 flex-col border-r border-border">
+      <div className="flex min-w-0 flex-1 flex-col lg:border-r lg:border-border">
         <MailboxHeader title="Loading" subtitle="Opening local mailbox" />
         <div className="space-y-0 p-3">
           {Array.from({ length: 12 }, (_, index) => (
@@ -52,7 +52,7 @@ export function MailboxRoute() {
   const data = mailbox.data;
   if (!data) return null;
   return (
-    <div className="flex min-w-0 flex-1 flex-col border-r border-border bg-background">
+    <div className="flex min-w-0 flex-1 flex-col bg-background lg:border-r lg:border-border">
       <SyncProgressBanner />
       <MailboxHeader
         title={data.mailbox.lensLabel}
@@ -75,8 +75,8 @@ export function MailboxRoute() {
 
 function MailboxHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex h-12 items-center justify-between border-b border-border px-4">
-      <div>
+    <div className="flex min-h-12 items-center justify-between border-b border-border px-4 py-2">
+      <div className="min-w-0">
         <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
         <div className="font-mono text-2xs text-muted-foreground">{subtitle}</div>
       </div>

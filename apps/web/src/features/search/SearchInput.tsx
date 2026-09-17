@@ -1,22 +1,26 @@
 import { Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 
-export function SearchInput() {
+export function SearchInput({ className }: { className?: string } = {}) {
   const setSearchOpen = useModals((s) => s.setSearchPaletteOpen);
 
   return (
     <Button
       type="button"
       variant="outline"
-      className="ml-auto h-8 w-[340px] justify-start gap-2 px-3 text-left text-xs font-normal text-muted-foreground"
+      className={cn(
+        "ml-auto h-10 min-w-0 flex-1 justify-start gap-2 px-3 text-left text-xs font-normal text-muted-foreground sm:h-8 sm:w-[340px] sm:flex-none",
+        className,
+      )}
       onClick={() => setSearchOpen(true)}
       aria-label="Open mail search"
     >
       <Search className="size-3.5" />
       <span className="min-w-0 flex-1 truncate">Search mail</span>
-      <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+      <kbd className="hidden rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground sm:inline-flex">
         /
       </kbd>
     </Button>
