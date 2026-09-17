@@ -122,12 +122,14 @@ export function BulkActionBar({ rows, loadedStatus }: BulkActionBarProps = {}) {
           </>
         ) : null}
       </div>
-      <SnoozeDialog
-        open={snoozeOpen}
-        messageIds={selected}
-        onOpenChange={setSnoozeOpen}
-        onSnoozed={clear}
-      />
+      {snoozeOpen ? (
+        <SnoozeDialog
+          open
+          messageIds={selected}
+          onOpenChange={setSnoozeOpen}
+          onSnoozed={clear}
+        />
+      ) : null}
     </>
   );
 }

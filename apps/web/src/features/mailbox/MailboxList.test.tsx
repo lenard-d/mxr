@@ -153,10 +153,7 @@ describe("MailboxList keyboard selection", () => {
 
     expect(useMailboxPane.getState().activePane).toBe("mailbox");
     expect(useMailboxPane.getState().suppressNextReaderFocus).toBe(true);
-    expect(router.navigate).toHaveBeenCalledWith({
-      to: "/m/$mailbox/$threadId",
-      params: { mailbox: "inbox", threadId: "thread-2" },
-    });
+    expect(router.navigate).toHaveBeenCalledWith({ to: "/m/inbox/thread-2" });
   });
 
   test("escape closes an open clicked thread when there is no active selection", async () => {
@@ -293,7 +290,11 @@ describe("MailboxList readOnly mode", () => {
   });
 
   test("shows an indeterminate master checkbox when only some loaded rows are selected", async () => {
-    useSelection.getState().selectMany(["msg-1"]);
+    useSelection.setState({
+      scope: "/m/inbox",
+      ids: new Set(["msg-1"]),
+      lastClickedId: "msg-1",
+    });
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
     const master = await screen.findByRole("checkbox", { name: /select all loaded messages/i });

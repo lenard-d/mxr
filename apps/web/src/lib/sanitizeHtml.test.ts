@@ -77,8 +77,9 @@ describe("sanitizeHtml", () => {
   it("blocks normal remote images by default", () => {
     const dirty = `<img src="https://cdn.example.com/hero.jpg" width="600" height="400" alt="hero">`;
     const clean = sanitizeHtml(dirty);
+    const image = new DOMParser().parseFromString(clean, "text/html").querySelector("img");
 
-    expect(clean).not.toMatch(/src="https:\/\/cdn\.example\.com\/hero\.jpg"/);
+    expect(image?.getAttribute("src")).toBeNull();
     expect(clean).toMatch(/data-original-src="https:\/\/cdn\.example\.com\/hero\.jpg"/);
     expect(clean).toMatch(/alt="hero"/);
   });
@@ -90,8 +91,9 @@ describe("sanitizeHtml", () => {
 
   it("blocks protocol-relative remote images by default", () => {
     const clean = sanitizeHtml('<img src="//cdn.example.com/hero.jpg">');
+    const image = new DOMParser().parseFromString(clean, "text/html").querySelector("img");
 
-    expect(clean).not.toMatch(/src="\/\/cdn\.example\.com\/hero\.jpg"/);
+    expect(image?.getAttribute("src")).toBeNull();
     expect(clean).toMatch(/data-original-src="\/\/cdn\.example\.com\/hero\.jpg"/);
   });
 

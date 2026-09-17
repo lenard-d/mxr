@@ -67,6 +67,7 @@ vi.mock("@/features/mailbox/api", () => ({
   modifyLabels: api.modifyLabels,
   resolveCommitment: vi.fn<(commitmentId: string) => Promise<unknown>>(),
   shellKey: ["shell"],
+  shellQueryKey: (accountId?: string) => ["shell", accountId ?? "all"],
   spamMessages: vi.fn<(messageIds: string[]) => Promise<unknown>>(),
   starMessages: vi.fn<(messageIds: string[], starred: boolean) => Promise<unknown>>(),
   trashMessages: vi.fn<(messageIds: string[]) => Promise<unknown>>(),
@@ -339,8 +340,8 @@ describe("ThreadRoute", () => {
     const blockedImage = new DOMParser()
       .parseFromString(frame.getAttribute("srcdoc") ?? "", "text/html")
       .querySelector('img[alt="hero"]');
-    expect(blockedImage).not.toHaveAttribute("src");
-    expect(blockedImage).toHaveAttribute("data-original-src", remoteImageUrl);
+    expect(blockedImage?.getAttribute("src")).toBeNull();
+    expect(blockedImage?.getAttribute("data-original-src")).toBe(remoteImageUrl);
     expect(screen.getByRole("button", { name: "Load remote images" })).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Load remote images" }));
@@ -363,7 +364,7 @@ describe("ThreadRoute", () => {
       ...thread,
       thread: { ...thread.thread, unread_count: 1 },
       messages: thread.messages.map((message, index) =>
-        index === 0 ? { ...message, unread: true } : message,
+        index === 0 ? Object.assign({}, message, { unread: true }) : message,
       ),
     });
     const setTimeoutSpy = vi.spyOn(window, "setTimeout");

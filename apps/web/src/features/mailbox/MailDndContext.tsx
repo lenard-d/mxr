@@ -348,22 +348,22 @@ function mailDropTarget(value: unknown): MailDropTarget | null {
   const target = value.target;
   if (!isString(target.id) || !isString(target.label)) return null;
   if (target.kind !== "user-label" && target.kind !== "system") return null;
-  if (
-    target.kind === "system" &&
-    target.action !== "archive" &&
-    target.action !== "spam" &&
-    target.action !== "trash"
-  ) {
+  if (target.kind === "system" && !isMailSystemDropAction(target.action)) {
     return null;
   }
+  const action = isMailSystemDropAction(target.action) ? target.action : undefined;
   return {
     id: target.id,
     label: target.label,
     kind: target.kind,
-    action: target.action,
+    action,
     labelId: isString(target.labelId) ? target.labelId : undefined,
     accountId: isString(target.accountId) ? target.accountId : undefined,
   };
+}
+
+function isMailSystemDropAction(value: unknown): value is MailSystemDropAction {
+  return value === "archive" || value === "spam" || value === "trash";
 }
 
 function uniqueStrings(values: string[]): string[] {

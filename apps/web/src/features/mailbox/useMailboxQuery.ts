@@ -112,7 +112,7 @@ function useMailContext(): MailContext {
     retry: false,
   });
   const accountKey = location?.source === "canonical" ? location.accountKey : undefined;
-  const accountResolution = accountQuery.isSuccess
+  const accountResolution: MailAccountResolution = accountQuery.isSuccess
     ? resolveMailAccount(accountKey, accountQuery.data.accounts)
     : accountKey
       ? { status: "loading", accountKey }

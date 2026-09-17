@@ -20,7 +20,7 @@ describe("buildGlobalKeymap", () => {
     const map = buildGlobalKeymap(nav);
 
     map["g a"]?.(new KeyboardEvent("keydown"));
-    expect(nav.navigate).toHaveBeenCalledWith("/m/archive");
+    expect(nav.navigate).toHaveBeenCalledWith("/mail/all/archive");
   });
 
   test("g y opens analytics", () => {
