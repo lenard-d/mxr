@@ -20,8 +20,8 @@ interface CodeMirrorComposeEditorProps {
 const tokenTheme = EditorView.theme({
   "&": {
     height: "100%",
-    backgroundColor: "var(--background)",
-    color: "var(--foreground)",
+    backgroundColor: "hsl(var(--background))",
+    color: "hsl(var(--foreground))",
     fontSize: "15px",
   },
   ".cm-editor": { height: "100%" },
@@ -34,17 +34,17 @@ const tokenTheme = EditorView.theme({
     maxWidth: "720px",
     padding: "24px 24px 56px 16px",
     fontFamily: "var(--font-mono)",
-    caretColor: "var(--primary)",
+    caretColor: "hsl(var(--primary))",
   },
   ".cm-gutters": {
-    backgroundColor: "var(--background)",
-    color: "var(--muted-foreground)",
+    backgroundColor: "hsl(var(--background))",
+    color: "hsl(var(--muted-foreground))",
     borderRightColor: "transparent",
   },
-  ".cm-cursor": { borderLeftColor: "var(--primary)" },
+  ".cm-cursor": { borderLeftColor: "hsl(var(--primary))" },
   "&.cm-focused": { outline: "none" },
   ".cm-selectionBackground": {
-    backgroundColor: "color-mix(in oklch, var(--primary) 24%, transparent) !important",
+    backgroundColor: "hsl(var(--primary) / 0.24) !important",
   },
 });
 

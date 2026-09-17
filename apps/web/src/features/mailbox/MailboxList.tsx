@@ -405,24 +405,25 @@ export function MailboxList({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 items-center justify-between gap-3 border-b border-border px-3">
-        <div className="min-w-0 truncate font-mono text-xs text-muted-foreground">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-10 min-w-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-1">
+        <div className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
           {rows.length} loaded
           {loadingMore ? " · loading more" : hasMore ? " · scroll for more" : ""}
           {!readOnly && selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
         </div>
         {readOnly ? null : (
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
+              className="min-h-10"
               onClick={() => selectMany(rows.map((row) => row.id))}
             >
               Select all
             </Button>
             {selectedIds.size > 0 ? (
-              <Button variant="outline" size="xs" onClick={clearSelection}>
+              <Button variant="outline" size="sm" className="min-h-10" onClick={clearSelection}>
                 Clear
               </Button>
             ) : null}
@@ -433,7 +434,7 @@ export function MailboxList({
         ref={parentRef}
         role="region"
         aria-label="Mailbox messages"
-        className="min-h-0 flex-1 overflow-auto"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
         data-active-pane={activePane === "mailbox" ? "true" : undefined}
         data-testid="mailbox-list"
         onMouseDown={() => setActivePane("mailbox")}

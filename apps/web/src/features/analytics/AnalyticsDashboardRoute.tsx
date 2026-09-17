@@ -648,20 +648,20 @@ function Chart({
     <div className="h-[360px]">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={rows}>
-          <CartesianGrid stroke="var(--border)" vertical={false} />
+          <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
           <XAxis dataKey="name" hide />
           <YAxis tickFormatter={formatBytes} width={72} />
           <Tooltip
             formatter={(value) => formatBytes(Number(value))}
             contentStyle={{
-              background: "var(--popover)",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
+              background: "hsl(var(--popover))",
+              border: "1px solid hsl(var(--border))",
+              color: "hsl(var(--foreground))",
             }}
           />
           <Bar
             dataKey="bytes"
-            fill="var(--chart-1)"
+            fill="hsl(var(--chart-1))"
             radius={[6, 6, 0, 0]}
             onClick={(data) =>
               onClick(data.payload as { name: string; bytes: number; count: number })

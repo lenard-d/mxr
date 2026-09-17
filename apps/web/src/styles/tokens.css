@@ -1,11 +1,9 @@
 /*
- * mxr web — design tokens.
+ * mxr web design tokens.
  *
- * Palette designed for the web app. Dark by default; light theme available.
- *
- * Token naming follows shadcn/ui's HSL-channel convention so shadcn
- * components drop in unchanged. Density tokens drive row heights for
- * the mailbox and other dense lists.
+ * Palette values live here and nowhere else. Theme values intentionally use
+ * HSL channels so Tailwind opacity utilities and the existing hsl(var(...))
+ * call sites can share one source of truth.
  */
 
 @import "tailwindcss";
@@ -13,31 +11,35 @@
 @theme {
   /* type */
   --font-sans:
-    "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    "Roboto Variable", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-heading:
+    "IBM Plex Sans Variable", "Roboto Variable", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono:
     "JetBrains Mono", "SF Mono", "Menlo", "Consolas", "Liberation Mono", "Courier New", monospace;
 
-  --text-2xs: 0.6875rem; /* 11px - meta/timestamps */
-  --text-xs: 0.75rem; /* 12px - chip text, secondary */
-  --text-sm: 0.8125rem; /* 13px - body default */
-  --text-base: 0.875rem; /* 14px - reader body */
-  --text-md: 0.9375rem; /* 15px - subjects */
-  --text-lg: 1.0625rem; /* 17px - reading pane h1 */
-  --text-xl: 1.25rem; /* 20px - page titles */
-  --text-2xl: 1.5rem; /* 24px - dashboard headers */
-  --text-3xl: 2rem; /* 32px - wrapped story mode */
-  --text-4xl: 3rem; /* 48px - wrapped slides */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+  --text-4xl: 3rem;
 
-  /* spacing */
+  /* spacing and radii */
   --spacing: 0.25rem;
+  --radius: 0.5rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.25rem;
+  --radius-4xl: 1.5rem;
 
-  /* radii */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-
-  /* density (row heights) */
+  /* density — the mailbox reads these through data-density on <html>. */
   --row-height-compact: 32px;
   --row-height-regular: 52px;
   --row-height-comfortable: 68px;
@@ -45,7 +47,7 @@
   /* shell dimensions */
   --shell-sidebar-w: 264px;
   --shell-sidebar-collapsed-w: 56px;
-  --shell-topbar-h: 44px;
+  --shell-topbar-h: 48px;
   --shell-statusbar-h: 28px;
   --shell-rightrail-w: 380px;
 
@@ -57,237 +59,369 @@
 }
 
 /*
- * Default theme = "midnight". Deep near-black with a subtle blue cast,
- * sky-cyan accent. Designed to feel like a terminal at 11pm without
- * being grim about it.
+ * Midnight — the default: blue-black surfaces with a restrained cyan signal.
  */
-[data-theme="dark"],
-[data-theme="midnight"],
-:root {
-  --background: 220 16% 6%;
-  --foreground: 220 14% 92%;
+:root,
+:root[data-theme="midnight"],
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-  --surface: 220 14% 9%;
-  --surface-elevated: 220 14% 12%;
+  --background: 220 18% 7%;
+  --foreground: 215 22% 93%;
 
-  --muted: 220 12% 14%;
-  --muted-foreground: 220 8% 60%;
+  --surface: 220 17% 9%;
+  --surface-elevated: 220 16% 12%;
 
-  --subtle: 220 10% 18%;
-  --subtle-foreground: 220 8% 45%;
+  --muted: 220 14% 15%;
+  --muted-foreground: 218 10% 64%;
 
-  --border: 220 10% 17%;
-  --border-strong: 220 10% 24%;
-  --input: 220 12% 14%;
+  --subtle: 220 12% 19%;
+  --subtle-foreground: 218 9% 48%;
 
-  --primary: 199 89% 74%;
-  --primary-foreground: 220 30% 8%;
-  --primary-muted: 199 50% 20%;
+  --border: 220 12% 20%;
+  --border-strong: 219 12% 29%;
+  --input: 220 14% 16%;
 
-  --accent: 199 89% 74%;
-  --accent-foreground: 220 30% 8%;
+  --primary: 194 82% 62%;
+  --primary-foreground: 220 28% 8%;
+  --primary-muted: 194 46% 20%;
 
-  --destructive: 0 70% 70%;
+  --accent: 194 82% 62%;
+  --accent-foreground: 220 28% 8%;
+
+  --secondary: 220 14% 17%;
+  --secondary-foreground: 215 20% 91%;
+
+  --destructive: 0 72% 68%;
   --destructive-foreground: 0 0% 100%;
+  --success: 145 60% 62%;
+  --success-foreground: 220 28% 8%;
+  --warning: 39 88% 64%;
+  --warning-foreground: 220 28% 8%;
+  --vip: 39 92% 60%;
+  --vip-foreground: 220 28% 8%;
+  --pending: 258 78% 76%;
+  --pending-foreground: 220 28% 8%;
 
-  --success: 142 70% 70%;
-  --success-foreground: 220 30% 8%;
+  --ring: 194 82% 62%;
 
-  --warning: 42 90% 65%;
-  --warning-foreground: 220 30% 8%;
+  --card: 220 17% 9%;
+  --card-foreground: 215 22% 93%;
+  --popover: 220 16% 13%;
+  --popover-foreground: 215 22% 93%;
 
-  --vip: 42 95% 60%;
-  --vip-foreground: 220 30% 8%;
+  --sidebar: 222 20% 9%;
+  --sidebar-foreground: 215 18% 90%;
+  --sidebar-primary: 194 82% 62%;
+  --sidebar-primary-foreground: 220 28% 8%;
+  --sidebar-accent: 194 38% 17%;
+  --sidebar-accent-foreground: 194 90% 86%;
+  --sidebar-border: 220 13% 19%;
+  --sidebar-ring: 194 82% 62%;
 
-  --pending: 258 80% 80%;
-  --pending-foreground: 220 30% 8%;
-
-  --ring: 199 89% 74%;
-
-  --card: 220 14% 9%;
-  --card-foreground: 220 14% 92%;
-  --popover: 220 14% 12%;
-  --popover-foreground: 220 14% 92%;
-
-  /* email semantic colors */
-  --unread-marker: 199 89% 74%;
-  --star: 42 95% 60%;
-  --vip-marker: 42 95% 60%;
-  --thread-line: 220 10% 28%;
+  /* mailbox and reader semantics */
+  --unread-marker: 194 82% 62%;
+  --star: 39 92% 60%;
+  --vip-marker: 39 92% 60%;
+  --thread-line: 220 12% 32%;
 
   /* charts */
-  --chart-1: 199 89% 74%;
-  --chart-2: 270 70% 75%;
-  --chart-3: 142 70% 70%;
-  --chart-4: 42 95% 65%;
-  --chart-5: 12 80% 70%;
-  --chart-6: 180 55% 65%;
+  --chart-1: 194 82% 62%;
+  --chart-2: 263 72% 70%;
+  --chart-3: 145 60% 62%;
+  --chart-4: 39 92% 60%;
+  --chart-5: 13 78% 66%;
+  --chart-6: 180 55% 58%;
 }
 
-[data-theme="light"] {
-  --background: 0 0% 100%;
-  --foreground: 220 30% 10%;
+/* Eclipse — a violet-black night theme with a magenta signal. */
+[data-theme="eclipse"] {
+  color-scheme: dark;
 
-  --surface: 220 20% 98%;
+  --background: 250 18% 7%;
+  --foreground: 265 24% 94%;
+
+  --surface: 250 17% 10%;
+  --surface-elevated: 250 16% 14%;
+
+  --muted: 250 14% 17%;
+  --muted-foreground: 258 12% 66%;
+
+  --subtle: 250 12% 22%;
+  --subtle-foreground: 258 10% 49%;
+
+  --border: 250 13% 22%;
+  --border-strong: 250 14% 32%;
+  --input: 250 15% 18%;
+
+  --primary: 303 78% 68%;
+  --primary-foreground: 250 30% 8%;
+  --primary-muted: 303 43% 22%;
+
+  --accent: 303 78% 68%;
+  --accent-foreground: 250 30% 8%;
+
+  --secondary: 250 15% 19%;
+  --secondary-foreground: 265 22% 92%;
+
+  --destructive: 0 78% 70%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 150 57% 64%;
+  --success-foreground: 250 30% 8%;
+  --warning: 42 88% 66%;
+  --warning-foreground: 250 30% 8%;
+  --vip: 42 91% 62%;
+  --vip-foreground: 250 30% 8%;
+  --pending: 278 78% 78%;
+  --pending-foreground: 250 30% 8%;
+
+  --ring: 303 78% 68%;
+
+  --card: 250 17% 10%;
+  --card-foreground: 265 24% 94%;
+  --popover: 250 16% 14%;
+  --popover-foreground: 265 24% 94%;
+
+  --sidebar: 253 21% 10%;
+  --sidebar-foreground: 265 22% 91%;
+  --sidebar-primary: 303 78% 68%;
+  --sidebar-primary-foreground: 250 30% 8%;
+  --sidebar-accent: 303 37% 20%;
+  --sidebar-accent-foreground: 303 90% 88%;
+  --sidebar-border: 250 14% 22%;
+  --sidebar-ring: 303 78% 68%;
+
+  --unread-marker: 303 78% 68%;
+  --star: 42 91% 62%;
+  --vip-marker: 42 91% 62%;
+  --thread-line: 250 13% 34%;
+
+  --chart-1: 303 78% 68%;
+  --chart-2: 198 78% 65%;
+  --chart-3: 150 57% 64%;
+  --chart-4: 42 91% 62%;
+  --chart-5: 13 80% 68%;
+  --chart-6: 267 72% 72%;
+}
+
+/* Paper — warm cream surfaces for long daytime reading. */
+[data-theme="paper"] {
+  color-scheme: light;
+
+  --background: 36 34% 95%;
+  --foreground: 28 24% 18%;
+
+  --surface: 36 35% 97%;
+  --surface-elevated: 38 45% 99%;
+
+  --muted: 35 24% 90%;
+  --muted-foreground: 29 12% 40%;
+
+  --subtle: 35 20% 85%;
+  --subtle-foreground: 29 10% 51%;
+
+  --border: 34 19% 82%;
+  --border-strong: 31 19% 70%;
+  --input: 35 24% 91%;
+
+  --primary: 15 72% 43%;
+  --primary-foreground: 0 0% 100%;
+  --primary-muted: 15 60% 88%;
+
+  --accent: 15 72% 43%;
+  --accent-foreground: 0 0% 100%;
+
+  --secondary: 35 23% 88%;
+  --secondary-foreground: 28 24% 22%;
+
+  --destructive: 0 65% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 145 51% 34%;
+  --success-foreground: 0 0% 100%;
+  --warning: 34 79% 40%;
+  --warning-foreground: 0 0% 100%;
+  --vip: 34 85% 42%;
+  --vip-foreground: 0 0% 100%;
+  --pending: 260 57% 52%;
+  --pending-foreground: 0 0% 100%;
+
+  --ring: 15 72% 43%;
+
+  --card: 38 45% 99%;
+  --card-foreground: 28 24% 18%;
+  --popover: 38 45% 99%;
+  --popover-foreground: 28 24% 18%;
+
+  --sidebar: 35 27% 91%;
+  --sidebar-foreground: 28 22% 25%;
+  --sidebar-primary: 15 72% 43%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 15 55% 86%;
+  --sidebar-accent-foreground: 15 72% 32%;
+  --sidebar-border: 34 19% 80%;
+  --sidebar-ring: 15 72% 43%;
+
+  --unread-marker: 15 72% 43%;
+  --star: 34 85% 42%;
+  --vip-marker: 34 85% 42%;
+  --thread-line: 31 19% 70%;
+
+  --chart-1: 15 72% 43%;
+  --chart-2: 199 68% 38%;
+  --chart-3: 145 51% 34%;
+  --chart-4: 34 85% 42%;
+  --chart-5: 270 55% 48%;
+  --chart-6: 180 48% 34%;
+}
+
+/* Light — cool white surfaces with a blue editorial accent. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --background: 210 25% 98%;
+  --foreground: 220 25% 13%;
+
+  --surface: 210 22% 96%;
   --surface-elevated: 0 0% 100%;
 
-  --muted: 220 15% 95%;
-  --muted-foreground: 220 8% 35%;
+  --muted: 210 18% 93%;
+  --muted-foreground: 216 12% 39%;
 
-  --subtle: 220 12% 90%;
-  --subtle-foreground: 220 8% 45%;
+  --subtle: 210 15% 88%;
+  --subtle-foreground: 216 10% 51%;
 
-  --border: 220 15% 88%;
-  --border-strong: 220 12% 80%;
-  --input: 220 15% 95%;
+  --border: 214 17% 85%;
+  --border-strong: 214 15% 73%;
+  --input: 210 18% 94%;
 
-  --primary: 199 89% 42%;
+  --primary: 218 70% 46%;
   --primary-foreground: 0 0% 100%;
-  --primary-muted: 199 50% 90%;
+  --primary-muted: 218 58% 90%;
 
-  --accent: 199 89% 42%;
+  --accent: 204 72% 45%;
   --accent-foreground: 0 0% 100%;
 
-  --destructive: 0 65% 50%;
+  --secondary: 210 18% 92%;
+  --secondary-foreground: 220 25% 20%;
+
+  --destructive: 0 64% 49%;
   --destructive-foreground: 0 0% 100%;
-
-  --success: 142 60% 35%;
+  --success: 145 55% 34%;
   --success-foreground: 0 0% 100%;
-
-  --warning: 36 90% 45%;
+  --warning: 34 82% 43%;
   --warning-foreground: 0 0% 100%;
-
-  --vip: 36 95% 50%;
+  --vip: 34 88% 45%;
   --vip-foreground: 0 0% 100%;
-
-  --pending: 258 70% 60%;
+  --pending: 256 62% 55%;
   --pending-foreground: 0 0% 100%;
 
-  --ring: 199 89% 42%;
+  --ring: 218 70% 46%;
 
   --card: 0 0% 100%;
-  --card-foreground: 220 30% 10%;
+  --card-foreground: 220 25% 13%;
   --popover: 0 0% 100%;
-  --popover-foreground: 220 30% 10%;
+  --popover-foreground: 220 25% 13%;
 
-  --unread-marker: 199 89% 42%;
-  --star: 36 95% 50%;
-  --vip-marker: 36 95% 50%;
-  --thread-line: 220 15% 80%;
+  --sidebar: 214 22% 95%;
+  --sidebar-foreground: 220 22% 22%;
+  --sidebar-primary: 218 70% 46%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 218 54% 90%;
+  --sidebar-accent-foreground: 218 70% 32%;
+  --sidebar-border: 214 17% 84%;
+  --sidebar-ring: 218 70% 46%;
 
-  --chart-1: 199 89% 42%;
-  --chart-2: 270 70% 50%;
-  --chart-3: 142 60% 40%;
-  --chart-4: 36 90% 50%;
-  --chart-5: 12 80% 50%;
-  --chart-6: 180 55% 40%;
+  --unread-marker: 218 70% 46%;
+  --star: 38 87% 45%;
+  --vip-marker: 38 87% 45%;
+  --thread-line: 214 15% 73%;
+
+  --chart-1: 218 70% 46%;
+  --chart-2: 270 62% 51%;
+  --chart-3: 145 55% 34%;
+  --chart-4: 38 87% 45%;
+  --chart-5: 12 72% 48%;
+  --chart-6: 180 48% 36%;
 }
 
 /*
- * "Eclipse" — cool, very dark, near monochromatic with magenta accent.
- * For users who want a stronger night feel.
+ * Density and read-state tokens. Keep these here so mailbox consumers do not
+ * need to know which stylesheet owns the active palette.
  */
-[data-theme="eclipse"] {
-  --background: 240 8% 4%;
-  --foreground: 240 6% 92%;
-
-  --surface: 240 8% 7%;
-  --surface-elevated: 240 8% 10%;
-
-  --muted: 240 6% 13%;
-  --muted-foreground: 240 6% 60%;
-
-  --subtle: 240 6% 17%;
-  --subtle-foreground: 240 6% 45%;
-
-  --border: 240 6% 16%;
-  --border-strong: 240 6% 22%;
-  --input: 240 6% 13%;
-
-  --primary: 312 85% 75%;
-  --primary-foreground: 240 30% 5%;
-  --primary-muted: 312 50% 20%;
-
-  --accent: 312 85% 75%;
-  --accent-foreground: 240 30% 5%;
-
-  --destructive: 0 80% 70%;
-  --destructive-foreground: 0 0% 100%;
-  --success: 142 70% 70%;
-  --success-foreground: 240 30% 5%;
-  --warning: 42 90% 65%;
-  --warning-foreground: 240 30% 5%;
-  --vip: 42 95% 60%;
-  --vip-foreground: 240 30% 5%;
-  --pending: 280 80% 80%;
-  --pending-foreground: 240 30% 5%;
-  --ring: 312 85% 75%;
-  --card: 240 8% 7%;
-  --card-foreground: 240 6% 92%;
-  --popover: 240 8% 10%;
-  --popover-foreground: 240 6% 92%;
-  --unread-marker: 312 85% 75%;
-  --star: 42 95% 60%;
-  --vip-marker: 42 95% 60%;
-  --thread-line: 240 6% 25%;
-  --chart-1: 312 85% 75%;
-  --chart-2: 199 89% 70%;
-  --chart-3: 142 70% 65%;
-  --chart-4: 42 95% 65%;
-  --chart-5: 12 80% 70%;
-  --chart-6: 270 70% 75%;
+:root:not([data-density]),
+[data-density="regular"] {
+  --row-height: var(--row-height-regular);
+  --mail-row-subject-size: 0.875rem;
+  --mail-row-meta-size: 0.75rem;
+  --mail-row-snippet-display: block;
+  --mail-row-read-weight: 400;
+  --mail-row-unread-weight: 600;
+  --mail-row-read-background: transparent;
+  --mail-row-unread-background: transparent;
+  --mail-row-read-foreground: var(--foreground);
+  --mail-row-unread-foreground: var(--foreground);
+  --mail-row-unread-marker: var(--unread-marker);
 }
 
-/*
- * "Paper" — warm, off-white, low-contrast for daytime reading.
- */
-[data-theme="paper"] {
-  --background: 36 30% 96%;
-  --foreground: 30 18% 18%;
+[data-density="compact"] {
+  --row-height: var(--row-height-compact);
+  --mail-row-subject-size: 0.8125rem;
+  --mail-row-meta-size: 0.6875rem;
+  --mail-row-snippet-display: none;
+  --mail-row-read-weight: 400;
+  --mail-row-unread-weight: 600;
+  --mail-row-read-background: transparent;
+  --mail-row-unread-background: transparent;
+  --mail-row-read-foreground: var(--foreground);
+  --mail-row-unread-foreground: var(--foreground);
+  --mail-row-unread-marker: var(--unread-marker);
+}
 
-  --surface: 36 30% 98%;
-  --surface-elevated: 36 30% 99%;
+[data-density="comfortable"] {
+  --row-height: var(--row-height-comfortable);
+  --mail-row-subject-size: 0.9375rem;
+  --mail-row-meta-size: 0.8125rem;
+  --mail-row-snippet-display: block;
+  --mail-row-read-weight: 400;
+  --mail-row-unread-weight: 600;
+  --mail-row-read-background: transparent;
+  --mail-row-unread-background: transparent;
+  --mail-row-read-foreground: var(--foreground);
+  --mail-row-unread-foreground: var(--foreground);
+  --mail-row-unread-marker: var(--unread-marker);
+}
 
-  --muted: 36 20% 92%;
-  --muted-foreground: 30 10% 38%;
+.mailbox-row {
+  background-color: var(--mail-row-read-background);
+  color: hsl(var(--mail-row-read-foreground));
+  font-weight: var(--mail-row-read-weight);
+}
 
-  --subtle: 36 20% 88%;
-  --subtle-foreground: 30 10% 50%;
+.mailbox-row[data-unread="true"] {
+  background-color: var(--mail-row-unread-background);
+  color: hsl(var(--mail-row-unread-foreground));
+  font-weight: var(--mail-row-unread-weight);
+}
 
-  --border: 36 20% 84%;
-  --border-strong: 30 15% 75%;
-  --input: 36 20% 92%;
+.mailbox-row-snippet {
+  display: var(--mail-row-snippet-display);
+}
 
-  --primary: 14 80% 45%;
-  --primary-foreground: 0 0% 100%;
-  --primary-muted: 14 60% 90%;
+/* Keep dense rows within the viewport at narrow widths. */
+@media (max-width: 767px) {
+  .mailbox-row {
+    min-height: max(40px, var(--row-height));
+  }
 
-  --accent: 14 80% 45%;
-  --accent-foreground: 0 0% 100%;
+  .mailbox-row:not([data-read-only="true"]) {
+    grid-template-columns: 40px 40px minmax(88px, 0.8fr) minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    padding-inline: 0.5rem;
+  }
 
-  --destructive: 0 65% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --success: 140 50% 35%;
-  --success-foreground: 0 0% 100%;
-  --warning: 36 80% 40%;
-  --warning-foreground: 0 0% 100%;
-  --vip: 36 90% 45%;
-  --vip-foreground: 0 0% 100%;
-  --pending: 258 60% 55%;
-  --pending-foreground: 0 0% 100%;
-  --ring: 14 80% 45%;
-  --card: 36 30% 99%;
-  --card-foreground: 30 18% 18%;
-  --popover: 36 30% 99%;
-  --popover-foreground: 30 18% 18%;
-  --unread-marker: 14 80% 45%;
-  --star: 36 90% 45%;
-  --vip-marker: 36 90% 45%;
-  --thread-line: 30 15% 75%;
-  --chart-1: 14 80% 45%;
-  --chart-2: 199 89% 38%;
-  --chart-3: 140 50% 35%;
-  --chart-4: 36 80% 45%;
-  --chart-5: 270 50% 50%;
-  --chart-6: 180 45% 35%;
+  .mailbox-row[data-read-only="true"] {
+    grid-template-columns: minmax(96px, 0.8fr) minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    padding-inline: 0.5rem;
+  }
 }

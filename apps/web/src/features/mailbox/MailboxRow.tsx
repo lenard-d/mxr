@@ -64,6 +64,8 @@ export function MailboxRow({
     <div
       role="article"
       tabIndex={0}
+      data-read-only={readOnly ? "true" : "false"}
+      data-unread={row.unread ? "true" : "false"}
       aria-label={`${row.sender} ${row.subject || "(no subject)"} ${conversationCount ? `conversation thread with ${conversationCount} messages` : ""} ${openCommitmentCount ? `${openCommitmentCount} open ${openCommitmentCount === 1 ? "commitment" : "commitments"}` : ""} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
       onClick={onOpen}
       onFocus={onFocusPane}
@@ -93,7 +95,7 @@ export function MailboxRow({
             onClick={toggleSelection}
             aria-label={selected ? "Deselect message" : "Select message"}
             className={cn(
-              "grid size-4 place-items-center rounded border border-border text-[10px] text-primary opacity-0 transition-opacity group-hover:opacity-100",
+              "grid size-10 place-items-center rounded border border-border text-[10px] transition-opacity md:size-5 md:opacity-0 md:group-hover:opacity-100",
               selected && "border-primary bg-primary text-primary-foreground opacity-100",
             )}
           >
@@ -103,7 +105,7 @@ export function MailboxRow({
           <button
             type="button"
             className={cn(
-              "grid size-5 place-items-center rounded text-muted-foreground hover:bg-muted",
+              "grid size-10 place-items-center rounded text-muted-foreground hover:bg-muted md:size-5",
               row.starred && "text-star",
             )}
             onClick={(event) => {
@@ -165,8 +167,8 @@ export function MailboxRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-1 justify-self-end">
-        <div className="mr-1 whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1 justify-self-end">
+        <div className="mr-1 max-w-[4.5rem] truncate whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
           {row.date_label}
         </div>
         {readOnly ? null : (
@@ -262,7 +264,7 @@ function QuickAction({
       type="button"
       variant="ghost"
       size="icon"
-      className="size-6"
+      className="size-10 md:size-6"
       aria-label={label}
       onClick={(event) => {
         event.stopPropagation();

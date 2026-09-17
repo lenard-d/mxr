@@ -111,7 +111,7 @@ export function ThreadRoute() {
   const mailboxPath = location ? mailboxPathFromLocation(location) : "/";
   const readerFull = readerLayout === "full";
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 bg-background">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
       <div
         className={cn(
           "hidden w-[520px] shrink-0 xl:w-[560px] 2xl:w-[600px]",
@@ -897,7 +897,7 @@ function ThreadMessage({
       )}
       data-testid="thread-message"
     >
-      <div className="flex items-start justify-between gap-4 py-2.5">
+      <div className="flex min-w-0 items-start justify-between gap-2 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="break-words text-base font-medium">{message.sender}</div>
@@ -914,7 +914,7 @@ function ThreadMessage({
           </div>
         </div>
         <time
-          className="shrink-0 text-right font-mono text-xs text-muted-foreground"
+          className="max-w-[42%] shrink-0 truncate text-right font-mono text-xs text-muted-foreground"
           dateTime={message.date}
           title={message.date_full}
         >

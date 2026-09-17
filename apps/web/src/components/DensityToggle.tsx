@@ -3,7 +3,7 @@ import { Check, Rows2, Rows3, Rows4 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useUiPrefs, type Density } from "@/state/uiPrefsStore";
+import { isDensity, useUiPrefs, type Density } from "@/state/uiPrefsStore";
 
 const options: { id: Density; label: string; Icon: typeof Rows2 }[] = [
   { id: "compact", label: "Compact", Icon: Rows4 },
@@ -20,7 +20,7 @@ export function DensityToggle() {
       type="single"
       value={density}
       onValueChange={(value) => {
-        if (value) setDensity(value as Density);
+        if (isDensity(value)) setDensity(value);
       }}
       aria-label="Mailbox density"
       className="pl-2"
@@ -34,7 +34,7 @@ export function DensityToggle() {
               size="icon"
               aria-label={`${label}${density === id ? " selected" : ""}`}
               className={cn(
-                "relative",
+                "relative min-h-10 min-w-10 md:min-h-0 md:min-w-0",
                 density === id &&
                   "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/60",
               )}

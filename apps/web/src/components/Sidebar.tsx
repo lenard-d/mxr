@@ -80,8 +80,15 @@ interface NavSection {
   items: NavItem[];
 }
 
-export function Sidebar() {
-  const collapsed = useUiPrefs((s) => s.sidebarCollapsed);
+interface SidebarProps {
+  /** Render as the expanded mobile sheet rather than the desktop rail. */
+  mobile?: boolean;
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
+  const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const collapsed = mobile ? false : sidebarCollapsed;
   const setCollapsed = useUiPrefs((s) => s.setSidebarCollapsed);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -140,6 +147,7 @@ export function Sidebar() {
         event.preventDefault();
         const item = navigationItems[sidebarIndex];
         if (item) {
+          onNavigate?.();
           void navigate({ to: item.to });
           setActivePane("mailbox");
         }
@@ -147,16 +155,25 @@ export function Sidebar() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activePane, navigate, navigationItems, setActivePane, setSidebarIndex, sidebarIndex]);
+  }, [
+    activePane,
+    navigate,
+    navigationItems,
+    onNavigate,
+    setActivePane,
+    setSidebarIndex,
+    sidebarIndex,
+  ]);
 
   let itemIndex = 0;
 
   return (
     <aside
-      className="flex h-full flex-col bg-sidebar text-sidebar-foreground"
+      className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground"
+      data-mobile-navigation={mobile ? "true" : undefined}
       aria-label="Mailbox sidebar"
     >
-      <div className="border-b border-sidebar-border p-2">
+      <div className={cn("border-b border-sidebar-border p-2", mobile && "pr-14")}>
         <AccountSwitcher collapsed={collapsed} />
       </div>
 
@@ -167,6 +184,7 @@ export function Sidebar() {
               key={section.label}
               label={section.label}
               collapsed={collapsed}
+              mobile={mobile}
               className={sectionIndex > 0 ? "mt-4" : undefined}
             >
               {section.items.map((item) => {
@@ -177,8 +195,10 @@ export function Sidebar() {
                     key={`${section.label}-${item.to}-${item.label}`}
                     item={item}
                     collapsed={collapsed}
+                    mobile={mobile}
                     active={isItemActive(path, item.to)}
                     focused={activePane === "sidebar" && sidebarIndex === index}
+                    onNavigate={onNavigate}
                     onFocusPane={() => {
                       setSidebarIndex(index);
                       setActivePane("sidebar");
@@ -197,28 +217,31 @@ export function Sidebar() {
           collapsed
             ? "flex flex-col items-center gap-1"
             : "flex items-center justify-between gap-2",
+          mobile && "pb-[max(0.5rem,env(safe-area-inset-bottom))]",
         )}
       >
         <ConnectionPill compact={collapsed} />
         <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
           <ThemePicker />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setCollapsed(!collapsed)}
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                {collapsed ? (
-                  <ChevronsRight className="size-3.5" />
-                ) : (
-                  <ChevronsLeft className="size-3.5" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{collapsed ? "Expand" : "Collapse"}</TooltipContent>
-          </Tooltip>
+          {!mobile ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setCollapsed(!collapsed)}
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                  {collapsed ? (
+                    <ChevronsRight className="size-3.5" />
+                  ) : (
+                    <ChevronsLeft className="size-3.5" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{collapsed ? "Expand" : "Collapse"}</TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
       </div>
     </aside>
@@ -228,15 +251,21 @@ export function Sidebar() {
 interface SectionProps {
   label: string;
   collapsed: boolean;
+  mobile: boolean;
   className?: string;
   children: ReactNode;
 }
 
-function SidebarSection({ label, collapsed, className, children }: SectionProps) {
+function SidebarSection({ label, collapsed, mobile, className, children }: SectionProps) {
   return (
     <div className={className}>
       {!collapsed && (
-        <div className="mb-1 px-2 text-2xs font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+        <div
+          className={cn(
+            "mb-1 px-2 text-2xs font-semibold uppercase tracking-wide text-sidebar-foreground/60",
+            mobile && "mt-1",
+          )}
+        >
           {label}
         </div>
       )}
@@ -248,25 +277,37 @@ function SidebarSection({ label, collapsed, className, children }: SectionProps)
 interface LinkProps {
   item: NavItem;
   collapsed: boolean;
+  mobile: boolean;
   active: boolean;
   focused: boolean;
+  onNavigate?: () => void;
   onFocusPane: () => void;
 }
 
-function SidebarLink({ item, collapsed, active, focused, onFocusPane }: LinkProps) {
+function SidebarLink({
+  item,
+  collapsed,
+  mobile,
+  active,
+  focused,
+  onNavigate,
+  onFocusPane,
+}: LinkProps) {
   const inner = (
     <Link
       to={item.to}
       data-focused={focused ? "true" : undefined}
       onFocus={onFocusPane}
+      aria-current={active ? "page" : undefined}
+      onClick={() => onNavigate?.()}
       className={cn(
-        "group flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
+        "group flex items-center gap-2 rounded-md transition-colors",
+        mobile ? "min-h-10 px-3 py-2 text-sm" : "px-2 py-1.5 text-xs",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         focused && "outline outline-1 outline-sidebar-ring/80",
       )}
-      aria-current={active ? "page" : undefined}
     >
       <item.Icon className={cn("size-3.5 shrink-0", active && "text-sidebar-primary")} />
       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}

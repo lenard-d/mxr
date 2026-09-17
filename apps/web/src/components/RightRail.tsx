@@ -31,10 +31,19 @@ export function RightRail() {
   if (!rail) return null;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-9 items-center justify-between border-b border-border px-3">
+    <aside
+      className="flex h-full min-w-0 flex-col"
+      aria-label={`${rail.kind.replace(/-/g, " ")} panel`}
+    >
+      <div className="flex min-h-12 items-center justify-between border-b border-border px-4">
         <div className="text-xs font-medium capitalize">{rail.kind.replace(/-/g, " ")}</div>
-        <Button variant="ghost" size="icon" onClick={close} aria-label="Close panel">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-10"
+          onClick={close}
+          aria-label="Close panel"
+        >
           <X className="size-3" />
         </Button>
       </div>
@@ -43,7 +52,7 @@ export function RightRail() {
           <RailContent kind={rail.kind} payload={rail.payload} />
         </div>
       </ScrollArea>
-    </div>
+    </aside>
   );
 }
 
