@@ -4,11 +4,17 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 
 export function Toaster() {
   const theme = useUiPrefs((s) => s.theme);
+  const toastPreferences = useUiPrefs((s) => s.toastPreferences);
   const resolved =
     theme === "system" ? "system" : theme === "light" || theme === "paper" ? "light" : "dark";
   return (
     <SonnerToaster
       theme={resolved}
+      data-show-error-toasts={toastPreferences.errors}
+      data-show-success-toasts={toastPreferences.success}
+      data-show-info-toasts={toastPreferences.info}
+      data-show-undo-toasts={toastPreferences.undo}
+      data-show-sent-toasts={toastPreferences.sent}
       position="top-right"
       duration={4_000}
       closeButton

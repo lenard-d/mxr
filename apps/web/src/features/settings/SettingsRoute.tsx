@@ -195,6 +195,7 @@ function SettingsSection({ section }: { section: string }) {
   const readerLayout = useUiPrefs((state) => state.readerLayout);
   const notificationsEnabled = useUiPrefs((state) => state.notificationsEnabled);
   const notifyAllNewMail = useUiPrefs((state) => state.notifyAllNewMail);
+  const toastPreferences = useUiPrefs((state) => state.toastPreferences);
   const vipAllowlist = useUiPrefs((state) => state.vipAllowlist);
   const setTheme = useUiPrefs((state) => state.setTheme);
   const setDensity = useUiPrefs((state) => state.setDensity);
@@ -202,6 +203,7 @@ function SettingsSection({ section }: { section: string }) {
   const setReaderLayout = useUiPrefs((state) => state.setReaderLayout);
   const setNotificationsEnabled = useUiPrefs((state) => state.setNotificationsEnabled);
   const setNotifyAllNewMail = useUiPrefs((state) => state.setNotifyAllNewMail);
+  const setToastPreference = useUiPrefs((state) => state.setToastPreference);
   const addVip = useUiPrefs((state) => state.addVip);
   const removeVip = useUiPrefs((state) => state.removeVip);
   const [vip, setVip] = useState("");
@@ -268,6 +270,39 @@ function SettingsSection({ section }: { section: string }) {
             checked={notifyAllNewMail}
             onChange={setNotifyAllNewMail}
           />
+          <Card className="space-y-3 p-4">
+            <div>
+              <h2 className="text-sm font-semibold">In-app toasts</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose which confirmations appear. Actions and undo state still work when hidden.
+              </p>
+            </div>
+            <Toggle
+              label="Errors"
+              checked={toastPreferences.errors}
+              onChange={(enabled) => setToastPreference("errors", enabled)}
+            />
+            <Toggle
+              label="Undo actions"
+              checked={toastPreferences.undo}
+              onChange={(enabled) => setToastPreference("undo", enabled)}
+            />
+            <Toggle
+              label="Sent and scheduled"
+              checked={toastPreferences.sent}
+              onChange={(enabled) => setToastPreference("sent", enabled)}
+            />
+            <Toggle
+              label="Other confirmations"
+              checked={toastPreferences.success}
+              onChange={(enabled) => setToastPreference("success", enabled)}
+            />
+            <Toggle
+              label="Info and warnings"
+              checked={toastPreferences.info}
+              onChange={(enabled) => setToastPreference("info", enabled)}
+            />
+          </Card>
           <div className="space-y-2">
             <Label>VIP allowlist</Label>
             <div className="flex gap-2">

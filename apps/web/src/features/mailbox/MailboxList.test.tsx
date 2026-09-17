@@ -68,7 +68,7 @@ describe("MailboxList keyboard selection", () => {
   test("selects all visible rows with ctrl-a and clears with escape", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "a", ctrlKey: true });
 
@@ -82,7 +82,7 @@ describe("MailboxList keyboard selection", () => {
   test("extends selection from the last selected row with shift-x", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "x" });
     fireEvent.keyDown(window, { key: "j" });
@@ -94,7 +94,7 @@ describe("MailboxList keyboard selection", () => {
   test("keeps keyboard focus on the same message when rows shift", async () => {
     const { rerender } = render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "j" });
 
@@ -122,7 +122,7 @@ describe("MailboxList keyboard selection", () => {
   test("jumps to the top with gg and bottom with G", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "G", shiftKey: true });
     fireEvent.keyDown(window, { key: "x" });
@@ -147,7 +147,7 @@ describe("MailboxList keyboard selection", () => {
       />,
     );
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "j" });
 
@@ -166,7 +166,7 @@ describe("MailboxList keyboard selection", () => {
       />,
     );
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "Escape" });
 
@@ -226,7 +226,7 @@ describe("MailboxList keyboard selection", () => {
   test("r marks the selected rows read and u marks the focused row unread", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "r" });
     expect(mutation.mutate).toHaveBeenCalledWith(["msg-1"]);
@@ -234,6 +234,19 @@ describe("MailboxList keyboard selection", () => {
     mutation.mutate.mockClear();
     fireEvent.keyDown(window, { key: "u" });
     expect(mutation.mutate).toHaveBeenCalledWith(["msg-1"]);
+  });
+
+  test("supports explicit uppercase read/unread and Gmail-style trash shortcuts", async () => {
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+    await screen.findByRole("checkbox", { name: /select all messages in view/i });
+
+    fireEvent.keyDown(window, { key: "R" });
+    fireEvent.keyDown(window, { key: "U" });
+    fireEvent.keyDown(window, { key: "#" });
+
+    expect(mutation.mutate).toHaveBeenNthCalledWith(1, ["msg-1"]);
+    expect(mutation.mutate).toHaveBeenNthCalledWith(2, ["msg-1"]);
+    expect(mutation.mutate).toHaveBeenNthCalledWith(3, ["msg-1"]);
   });
 
   test("row controls do not bubble Enter or Space into thread opening", () => {
@@ -255,6 +268,29 @@ describe("MailboxList keyboard selection", () => {
 
     expect(onOpen).not.toHaveBeenCalled();
   });
+
+  test("keeps a visible square checkbox and a single-line subject/snippet lane", () => {
+    const { container } = render(
+      <MailboxRow
+        row={rows[0]!}
+        selected={false}
+        focused={false}
+        onOpen={vi.fn<() => void>()}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+        dragSource={{ type: "mail-row", messageIds: ["msg-1"] }}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: /select message/i })).toHaveClass(
+      "rounded-none",
+      "mailbox-checkbox",
+    );
+    const contentLane = container.querySelector(".mailbox-row-subject")?.parentElement;
+    expect(contentLane).toContainElement(container.querySelector(".mailbox-row-snippet"));
+    expect(screen.getByRole("article")).toHaveAttribute("aria-roledescription", "draggable");
+    expect(screen.queryByRole("button", { name: /drag/i })).not.toBeInTheDocument();
+  });
 });
 
 describe("MailboxList readOnly mode", () => {
@@ -275,7 +311,8 @@ describe("MailboxList readOnly mode", () => {
   test("hides bulk selection and ignores mutation keys", async () => {
     render(<MailboxList groups={groups} mailboxPath="/analytics/stale" readOnly />);
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(await screen.findByRole("region", { name: /mailbox messages/i })).toBeVisible();
+    expect(screen.queryByText(/loaded/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /select all/i })).toBeNull();
 
     fireEvent.keyDown(window, { key: "a", ctrlKey: true });
@@ -286,7 +323,9 @@ describe("MailboxList readOnly mode", () => {
 
   test("non-readOnly still exposes bulk selection", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
-    expect(await screen.findByRole("checkbox", { name: /select all loaded messages/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
   });
 
   test("shows an indeterminate master checkbox when only some loaded rows are selected", async () => {
@@ -297,7 +336,7 @@ describe("MailboxList readOnly mode", () => {
     });
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    const master = await screen.findByRole("checkbox", { name: /select all loaded messages/i });
+    const master = await screen.findByRole("checkbox", { name: /select all messages in view/i });
     expect(master).toHaveAttribute("data-state", "indeterminate");
     expect(master).toHaveAttribute("aria-checked", "mixed");
 

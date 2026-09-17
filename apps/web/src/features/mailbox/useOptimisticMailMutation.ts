@@ -33,7 +33,7 @@ export function performUndo(qc: QueryClient, mutationId: string): Promise<void> 
     .then(() => {
       const undo = useUndo.getState();
       if (undo.lastMutationId === mutationId) undo.clear();
-      toast.success("Undo applied");
+      toast.success("Undo applied", { className: "toast-category-undo" });
       void qc.invalidateQueries({ queryKey: ["mailbox"] });
       void qc.invalidateQueries({ queryKey: ["thread"] });
       void qc.invalidateQueries({ queryKey: shellKey });
@@ -360,6 +360,7 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
       if (mutationId) {
         useUndo.getState().setLastMutationId(mutationId);
         toast.success(`${label} ${count}`, {
+          className: "toast-category-undo",
           duration: 60_000,
           description: "z to undo",
           action: {

@@ -57,6 +57,7 @@ describe("AccountSwitcher", () => {
 
     expect(await screen.findByText("Work")).toBeVisible();
     expect(screen.getByText("work@example.com")).toBeVisible();
+    expect(document.querySelector('img[src="https://example.com/favicon.ico"]')).toBeVisible();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: /account switcher/i }), {
       button: 0,

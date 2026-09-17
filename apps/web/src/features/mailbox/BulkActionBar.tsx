@@ -29,13 +29,11 @@ const actions: Array<{ action: MailAction; label: string; icon: typeof Archive }
 const confirmBeforeBulk = new Set<MailAction>(["archive", "trash", "spam"]);
 
 interface BulkActionBarProps {
-  /** Loaded rows make the master checkbox represent this page, not all mail. */
+  /** Rows make the master checkbox represent the current view, not all mail. */
   rows?: MessageRowView[];
-  /** Optional mailbox paging context shown beside the accessible selection status. */
-  loadedStatus?: string;
 }
 
-export function BulkActionBar({ rows, loadedStatus }: BulkActionBarProps = {}) {
+export function BulkActionBar({ rows }: BulkActionBarProps = {}) {
   const ids = useSelection((state) => state.ids);
   const clear = useSelection((state) => state.clear);
   const selectMany = useSelection((state) => state.selectMany);
@@ -52,7 +50,7 @@ export function BulkActionBar({ rows, loadedStatus }: BulkActionBarProps = {}) {
   return (
     <>
       <div
-        className="sticky top-0 z-20 flex min-h-10 flex-wrap items-center gap-1.5 border-b border-border bg-background/95 px-3 py-1.5 backdrop-blur"
+        className="sticky top-0 z-20 flex h-10 flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-border bg-background/95 px-3 backdrop-blur"
         role="toolbar"
         aria-label="Mailbox selection and bulk actions"
       >
@@ -64,30 +62,21 @@ export function BulkActionBar({ rows, loadedStatus }: BulkActionBarProps = {}) {
               else clear();
             }}
             aria-label={
-              allLoadedSelected ? "Deselect all loaded messages" : "Select all loaded messages"
+              allLoadedSelected ? "Deselect all messages in view" : "Select all messages in view"
             }
             aria-describedby="mailbox-selection-status"
             data-testid="mailbox-master-checkbox"
-            className="mr-1 size-4"
+            className="mailbox-checkbox mr-1 size-4 shrink-0 rounded-none"
           />
         ) : null}
         <div
           id="mailbox-selection-status"
           role="status"
           aria-live="polite"
-          className="mr-1 min-w-0 truncate font-mono text-2xs text-muted-foreground"
+          className="mr-1 shrink-0 font-mono text-2xs text-muted-foreground"
         >
-          {hasLoadedRows
-            ? selected.length > 0
-              ? `${selected.length} of ${rows.length} loaded messages selected`
-              : `${rows.length} loaded messages`
-            : `${selected.length} selected`}
+          {selected.length > 0 ? `${selected.length} selected` : null}
         </div>
-        {loadedStatus ? (
-          <span className="hidden truncate font-mono text-2xs text-muted-foreground sm:inline">
-            · {loadedStatus}
-          </span>
-        ) : null}
         {selected.length > 0 ? (
           <>
             <span className="mx-0.5 h-5 w-px bg-border" aria-hidden="true" />

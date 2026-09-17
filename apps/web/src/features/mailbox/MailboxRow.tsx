@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 
-import { MailDragHandle, type MailDragSource } from "./MailDndContext";
+import { useMailRowDrag, type MailDragSource } from "./MailDndContext";
 import type { MessageRowView } from "./types";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ interface MailboxRowProps {
   onFocusPane: () => void;
   onToggleSelection: (shift: boolean) => void;
   onFocusRow?: () => void;
-  /** Rows that should move together when this row's drag handle is used. */
+  /** Rows that should move together when this row is dragged. */
   dragSource?: MailDragSource;
   /**
    * Read-only rows drop the selection checkbox, star toggle, and hover
@@ -65,9 +65,13 @@ export function MailboxRow({
       : null;
   const subject = row.subject || "(no subject)";
   const rowState = `${row.unread ? "unread" : "read"}${selected ? ", selected" : ""}${focused ? ", keyboard focused" : ""}`;
+  const drag = useMailRowDrag(row.id, readOnly ? undefined : dragSource);
 
   return (
     <div
+      ref={drag.setNodeRef}
+      {...drag.attributes}
+      {...drag.listeners}
       role="article"
       tabIndex={0}
       data-read-only={readOnly ? "true" : "false"}
@@ -75,6 +79,7 @@ export function MailboxRow({
       data-selected={selected ? "true" : undefined}
       data-focused={focused ? "true" : undefined}
       data-unread={row.unread ? "true" : "false"}
+      data-dragging={drag.isDragging ? "true" : undefined}
       onClick={onOpen}
       onFocus={() => {
         onFocusPane();
@@ -91,22 +96,18 @@ export function MailboxRow({
         }
       }}
       className={cn(
-        "mailbox-row group relative grid min-w-0 cursor-pointer items-center gap-3 overflow-hidden border-b border-border/70 px-3 transition-colors",
+        "mailbox-row group relative grid min-w-0 cursor-pointer items-center gap-2 border-b border-border/70 px-3",
         readOnly
-          ? "grid-cols-[minmax(148px,220px)_1fr_auto]"
-          : "grid-cols-[36px_32px_minmax(148px,220px)_1fr_auto]",
-        "hover:bg-accent/70 hover:text-accent-foreground",
-        row.unread
-          ? "bg-background text-foreground [&_.mailbox-row-sender]:font-semibold [&_.mailbox-row-subject]:font-semibold"
-          : "bg-muted/15 text-muted-foreground",
-        selected && "bg-primary/15 text-foreground ring-1 ring-inset ring-primary/45 hover:bg-primary/20",
+          ? "grid-cols-[minmax(120px,200px)_minmax(0,1fr)_auto]"
+          : "grid-cols-[32px_28px_minmax(120px,200px)_minmax(0,1fr)_auto]",
         focused && "outline outline-1 outline-inset outline-ring/80",
+        drag.isDragging && "opacity-45",
       )}
       style={{ height: "var(--row-height)" }}
     >
       {readOnly ? null : (
         <div
-          className="grid size-9 place-items-center rounded-md"
+          className="grid size-8 place-items-center"
           data-mailbox-control="selection"
           onClick={(event) => event.stopPropagation()}
         >
@@ -125,7 +126,7 @@ export function MailboxRow({
               selectionShiftRef.current = false;
             }}
             aria-label={`${selected ? "Deselect" : "Select"} message from ${row.sender}: ${subject}`}
-            className="size-4"
+            className="mailbox-checkbox size-4 rounded-none"
           />
         </div>
       )}
@@ -135,9 +136,10 @@ export function MailboxRow({
           type="button"
           data-mailbox-control="star"
           className={cn(
-            "grid size-8 place-items-center rounded text-muted-foreground hover:bg-muted",
+            "mailbox-row-star grid size-7 place-items-center rounded text-muted-foreground hover:bg-muted",
             row.starred && "text-star",
           )}
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
             star.mutate([row.id]);
@@ -155,53 +157,52 @@ export function MailboxRow({
         {conversationCount ? <ConversationBadge count={conversationCount} /> : null}
       </div>
 
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="mailbox-row-subject truncate text-[length:var(--mail-row-subject-size)] leading-5">
-            {subject}
-          </h2>
-          {row.has_attachments ? (
-            <Paperclip
-              aria-label="Has attachments"
-              className="size-3.5 shrink-0 text-foreground/75"
-              role="img"
-            >
-              <title>{row.attachment_filename ?? "Has attachments"}</title>
-            </Paperclip>
-          ) : null}
-          {row.link_density && row.link_density !== "none" ? (
-            <LinkIcon
-              aria-label={
-                row.link_density === "heavy" ? "Link-heavy body" : "Body has external links"
-              }
-              role="img"
-              className={
-                row.link_density === "heavy"
-                  ? "size-3.5 shrink-0 text-amber-500"
-                  : "size-3.5 shrink-0 text-foreground/55"
-              }
-            >
-              <title>
-                {row.link_density === "heavy" ? "Many external links" : "Has external links"}
-              </title>
-            </LinkIcon>
-          ) : null}
-          {openCommitmentCount ? <CommitmentBadge count={openCommitmentCount} /> : null}
-          {row.triage_verdict ? (
-            <TriageBadge verdict={row.triage_verdict} reason={row.triage_reason ?? row.triage_line} />
-          ) : null}
-        </div>
-        <div className="mailbox-row-snippet truncate text-[length:var(--mail-row-meta-size)] font-normal leading-5 text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+        <h2 className="mailbox-row-subject max-w-[48%] shrink-0 truncate text-[length:var(--mail-row-subject-size)] leading-5">
+          {subject}
+        </h2>
+        <span className="mailbox-row-snippet min-w-0 flex-1 truncate text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
+          <span aria-hidden="true">— </span>
           {row.snippet}
-        </div>
+        </span>
+        {row.has_attachments ? (
+          <Paperclip
+            aria-label="Has attachments"
+            className="size-3.5 shrink-0 text-foreground/75"
+            role="img"
+          >
+            <title>{row.attachment_filename ?? "Has attachments"}</title>
+          </Paperclip>
+        ) : null}
+        {row.link_density && row.link_density !== "none" ? (
+          <LinkIcon
+            aria-label={
+              row.link_density === "heavy" ? "Link-heavy body" : "Body has external links"
+            }
+            role="img"
+            className={
+              row.link_density === "heavy"
+                ? "size-3.5 shrink-0 text-amber-500"
+                : "size-3.5 shrink-0 text-foreground/55"
+            }
+          >
+            <title>
+              {row.link_density === "heavy" ? "Many external links" : "Has external links"}
+            </title>
+          </LinkIcon>
+        ) : null}
+        {openCommitmentCount ? <CommitmentBadge count={openCommitmentCount} /> : null}
+        {row.triage_verdict ? (
+          <TriageBadge verdict={row.triage_verdict} reason={row.triage_reason ?? row.triage_line} />
+        ) : null}
       </div>
 
-      <div className="flex min-w-0 items-center gap-1 justify-self-end">
-        <div className="mr-1 max-w-[4.5rem] truncate whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
+      <div className="mailbox-row-trailing relative flex w-[8.25rem] min-w-0 items-center justify-end justify-self-end">
+        <div className="mailbox-row-date max-w-[7rem] truncate whitespace-nowrap text-right font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
           {row.date_label}
         </div>
         {readOnly ? null : (
-          <div className="hidden items-center gap-1 opacity-0 transition-opacity group-hover:flex group-hover:opacity-100">
+          <div className="mailbox-row-quick-actions absolute right-0 flex items-center gap-1 bg-inherit opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto">
             <QuickAction
               icon={MailOpen}
               label={row.unread ? "Mark read" : "Mark unread"}
@@ -211,9 +212,13 @@ export function MailboxRow({
           </div>
         )}
         {trailingAction ? (
-          <div onClick={(event) => event.stopPropagation()}>{trailingAction}</div>
+          <div
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {trailingAction}
+          </div>
         ) : null}
-        {!readOnly && dragSource ? <MailDragHandle id={row.id} source={dragSource} /> : null}
       </div>
     </div>
   );
@@ -297,6 +302,7 @@ function QuickAction({
       data-mailbox-control="quick-action"
       className="size-10 md:size-6"
       aria-label={label}
+      onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
         onClick();

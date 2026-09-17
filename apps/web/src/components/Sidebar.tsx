@@ -323,7 +323,7 @@ function SidebarLink({
       aria-current={active ? "page" : undefined}
       onClick={() => onNavigate?.()}
       className={cn(
-        "group flex items-center gap-2 rounded-md transition-colors",
+        "group flex items-center gap-2 rounded-md",
         mobile ? "min-h-10 px-3 py-2 text-sm" : "px-2 py-1.5 text-xs",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -332,7 +332,9 @@ function SidebarLink({
       )}
     >
       <item.Icon className={cn("size-3.5 shrink-0", active && "text-sidebar-primary")} />
-      {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+      {!collapsed && (
+        <span className={cn("flex-1 truncate", active && "font-semibold")}>{item.label}</span>
+      )}
       {!collapsed && item.badge !== undefined ? (
         <span
           className={cn(

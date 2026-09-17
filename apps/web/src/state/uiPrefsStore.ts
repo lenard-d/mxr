@@ -13,11 +13,21 @@ export type Density = "compact" | "regular" | "comfortable";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
 export type EmailHtmlTheme = "dark" | "original";
 export type ReaderLayout = "split" | "full";
+export type ToastCategory = "errors" | "success" | "info" | "undo" | "sent";
+export type ToastPreferences = Record<ToastCategory, boolean>;
 /** Undo-send window in seconds; 0 sends immediately. */
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
 
 const themeValues = new Set(["midnight", "light", "eclipse", "paper", "system"]);
 const densityValues = new Set(["compact", "regular", "comfortable"]);
+const toastCategories: ToastCategory[] = ["errors", "success", "info", "undo", "sent"];
+export const defaultToastPreferences: ToastPreferences = {
+  errors: true,
+  success: true,
+  info: true,
+  undo: true,
+  sent: true,
+};
 
 export function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && themeValues.has(value);
@@ -38,6 +48,7 @@ export interface UiPrefsState {
   notifyAllNewMail: boolean;
   vipAllowlist: string[];
   undoSendSeconds: UndoSendSeconds;
+  toastPreferences: ToastPreferences;
   setUndoSendSeconds: (seconds: UndoSendSeconds) => void;
   setTheme: (t: Theme) => void;
   setDensity: (d: Density) => void;
@@ -49,6 +60,7 @@ export interface UiPrefsState {
   setNotifyAllNewMail: (b: boolean) => void;
   addVip: (pattern: string) => void;
   removeVip: (pattern: string) => void;
+  setToastPreference: (category: ToastCategory, enabled: boolean) => void;
 }
 
 type PersistedUiPrefs = Pick<
@@ -63,6 +75,7 @@ type PersistedUiPrefs = Pick<
   | "notifyAllNewMail"
   | "vipAllowlist"
   | "undoSendSeconds"
+  | "toastPreferences"
 >;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -115,6 +128,14 @@ function sanitizePersistedPrefs(value: unknown): Partial<PersistedUiPrefs> {
   if (isUndoSendSeconds(record.undoSendSeconds)) {
     sanitized.undoSendSeconds = record.undoSendSeconds;
   }
+  if (isRecord(record.toastPreferences)) {
+    const toastPreferences = { ...defaultToastPreferences };
+    for (const category of toastCategories) {
+      const enabled = record.toastPreferences[category];
+      if (typeof enabled === "boolean") toastPreferences[category] = enabled;
+    }
+    sanitized.toastPreferences = toastPreferences;
+  }
   return sanitized;
 }
 
@@ -131,6 +152,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       notifyAllNewMail: false,
       vipAllowlist: [],
       undoSendSeconds: 10,
+      toastPreferences: { ...defaultToastPreferences },
       setUndoSendSeconds: (undoSendSeconds) => set({ undoSendSeconds }),
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
@@ -148,6 +170,10 @@ export const useUiPrefs = create<UiPrefsState>()(
         })),
       removeVip: (pattern) =>
         set((s) => ({ vipAllowlist: s.vipAllowlist.filter((p) => p !== pattern) })),
+      setToastPreference: (category, enabled) =>
+        set((state) => ({
+          toastPreferences: { ...state.toastPreferences, [category]: enabled },
+        })),
     }),
     {
       name: "mxr.uiPrefs",

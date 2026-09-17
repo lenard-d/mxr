@@ -344,67 +344,24 @@
   --chart-6: 180 48% 36%;
 }
 
-/*
- * Density and read-state tokens. Keep these here so mailbox consumers do not
- * need to know which stylesheet owns the active palette.
- */
+/* Mailbox density. Read, selection and hover states live in app.css. */
 :root:not([data-density]),
 [data-density="regular"] {
   --row-height: var(--row-height-regular);
   --mail-row-subject-size: 0.875rem;
   --mail-row-meta-size: 0.75rem;
-  --mail-row-snippet-display: block;
-  --mail-row-read-weight: 400;
-  --mail-row-unread-weight: 600;
-  --mail-row-read-background: transparent;
-  --mail-row-unread-background: transparent;
-  --mail-row-read-foreground: var(--foreground);
-  --mail-row-unread-foreground: var(--foreground);
-  --mail-row-unread-marker: var(--unread-marker);
 }
 
 [data-density="compact"] {
   --row-height: var(--row-height-compact);
   --mail-row-subject-size: 0.8125rem;
   --mail-row-meta-size: 0.6875rem;
-  --mail-row-snippet-display: none;
-  --mail-row-read-weight: 400;
-  --mail-row-unread-weight: 600;
-  --mail-row-read-background: transparent;
-  --mail-row-unread-background: transparent;
-  --mail-row-read-foreground: var(--foreground);
-  --mail-row-unread-foreground: var(--foreground);
-  --mail-row-unread-marker: var(--unread-marker);
 }
 
 [data-density="comfortable"] {
   --row-height: var(--row-height-comfortable);
   --mail-row-subject-size: 0.9375rem;
   --mail-row-meta-size: 0.8125rem;
-  --mail-row-snippet-display: block;
-  --mail-row-read-weight: 400;
-  --mail-row-unread-weight: 600;
-  --mail-row-read-background: transparent;
-  --mail-row-unread-background: transparent;
-  --mail-row-read-foreground: var(--foreground);
-  --mail-row-unread-foreground: var(--foreground);
-  --mail-row-unread-marker: var(--unread-marker);
-}
-
-.mailbox-row {
-  background-color: var(--mail-row-read-background);
-  color: hsl(var(--mail-row-read-foreground));
-  font-weight: var(--mail-row-read-weight);
-}
-
-.mailbox-row[data-unread="true"] {
-  background-color: var(--mail-row-unread-background);
-  color: hsl(var(--mail-row-unread-foreground));
-  font-weight: var(--mail-row-unread-weight);
-}
-
-.mailbox-row-snippet {
-  display: var(--mail-row-snippet-display);
 }
 
 /* Keep dense rows within the viewport at narrow widths. */
@@ -414,7 +371,7 @@
   }
 
   .mailbox-row:not([data-read-only="true"]) {
-    grid-template-columns: 40px 40px minmax(88px, 0.8fr) minmax(0, 1fr) auto;
+    grid-template-columns: 32px 28px minmax(88px, 0.8fr) minmax(0, 1fr) auto;
     gap: 0.5rem;
     padding-inline: 0.5rem;
   }

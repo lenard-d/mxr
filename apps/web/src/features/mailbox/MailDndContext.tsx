@@ -11,7 +11,6 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { GripVertical } from "lucide-react";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -230,7 +229,7 @@ function EnabledMailDropTarget({
       data-drop-target={target.id}
       data-drop-active={isOver ? "true" : undefined}
       className={cn(
-        "rounded-md transition-colors",
+        "rounded-md",
         isOver && "bg-sidebar-accent outline outline-2 outline-sidebar-ring",
         className,
       )}
@@ -240,56 +239,20 @@ function EnabledMailDropTarget({
   );
 }
 
-export function MailDragHandle({
-  id,
-  source,
-}: {
-  id: string;
-  source: MailDragSource;
-}) {
+export function useMailRowDrag(id: string, source?: MailDragSource) {
   const enabled = useContext(MailDndEnabledContext);
-  if (!enabled) return null;
-  return <EnabledMailDragHandle id={id} source={source} />;
-}
-
-function EnabledMailDragHandle({
-  id,
-  source,
-}: {
-  id: string;
-  source: MailDragSource;
-}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `mail-row:${id}`,
-    data: source,
+    data: source ?? { type: "mail-row", messageIds: [] },
+    disabled: !enabled || !source,
   });
-  const count = source.messageIds.length;
-  return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      {...attributes}
-      {...listeners}
-      data-mailbox-control="drag-handle"
-      aria-label={`Drag ${count} ${count === 1 ? "message" : "messages"}`}
-      aria-roledescription="draggable"
-      title="Drag to a label"
-      className={cn(
-        "grid size-8 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground",
-        isDragging && "text-primary opacity-50",
-      )}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <GripVertical className="size-3.5" aria-hidden="true" />
-    </button>
-  );
+  return { attributes, listeners, setNodeRef, isDragging };
 }
 
 function MailDragOverlay({ source }: { source: MailDragSource }) {
   const count = source.messageIds.length;
   return (
     <div className="flex min-w-52 max-w-xs items-center gap-2 rounded-lg border border-primary/60 bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl">
-      <GripVertical className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0 truncate font-medium">
         {count === 1
           ? source.preview?.subject || source.preview?.sender || "Move message"

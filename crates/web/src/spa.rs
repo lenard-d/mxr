@@ -26,7 +26,7 @@ static SPA_DIST: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/spa-empty-dist
 const CSP: &str = "default-src 'self'; \
     script-src 'self'; \
     style-src 'self' 'unsafe-inline'; \
-    img-src 'self' data: blob:; \
+    img-src 'self' data: blob: https:; \
     font-src 'self' data:; \
     connect-src 'self' ws: wss:; \
     frame-ancestors 'none'; \

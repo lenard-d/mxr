@@ -96,12 +96,111 @@
   line-height: 1.2;
 }
 
-[data-density="compact"] .mailbox-row-snippet {
-  display: none;
-}
-
 [data-density="compact"] .mailbox-group-header {
   height: 26px;
+}
+
+/* Mail rows own their visual states here so unread, selected and hover do not
+ * compete with generated utility order. Geometry never changes between states. */
+.mailbox-row {
+  overflow: visible;
+  background: hsl(var(--muted) / 0.12);
+  color: hsl(var(--muted-foreground));
+}
+
+.mailbox-checkbox {
+  border-color: hsl(var(--foreground) / 0.72);
+  background: hsl(var(--foreground) / 0.08);
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.12);
+}
+
+.mailbox-checkbox[data-state="checked"],
+.mailbox-checkbox[data-state="indeterminate"] {
+  border-color: hsl(var(--foreground));
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+}
+
+.mailbox-row[data-unread="true"] {
+  background: hsl(var(--foreground) / 0.055);
+  color: hsl(var(--foreground));
+}
+
+.mailbox-row[data-unread="true"] .mailbox-row-sender,
+.mailbox-row[data-unread="true"] .mailbox-row-subject,
+.mailbox-row[data-unread="true"] .mailbox-row-date {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+}
+
+.mailbox-row[data-unread="true"] [role="checkbox"],
+.mailbox-row[data-unread="true"] .mailbox-row-star,
+.mailbox-row:hover [role="checkbox"],
+.mailbox-row:hover .mailbox-row-star {
+  border-color: hsl(var(--foreground) / 0.9);
+  color: hsl(var(--foreground));
+}
+
+.mailbox-row[data-selected="true"] {
+  z-index: 2;
+  background: hsl(var(--primary) / 0.19);
+  color: hsl(var(--foreground));
+  box-shadow:
+    inset 3px 0 0 hsl(var(--primary)),
+    inset 0 0 0 1px hsl(var(--primary) / 0.55);
+}
+
+.mailbox-row:hover {
+  z-index: 3;
+  background: hsl(var(--foreground) / 0.075);
+  color: hsl(var(--foreground));
+  box-shadow:
+    0 0 0 1px hsl(var(--foreground) / 0.24),
+    0 0 8px hsl(var(--foreground) / 0.1);
+}
+
+.mailbox-row[data-selected="true"]:hover {
+  background: hsl(var(--primary) / 0.24);
+  box-shadow:
+    inset 3px 0 0 hsl(var(--primary)),
+    0 0 0 1px hsl(var(--primary) / 0.68),
+    0 0 9px hsl(var(--primary) / 0.16);
+}
+
+.mailbox-row-trailing,
+.mailbox-row-quick-actions {
+  background: inherit;
+}
+
+.mailbox-row:hover .mailbox-row-date {
+  opacity: 0;
+}
+
+.compose-primary {
+  border-color: hsl(var(--foreground));
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+}
+
+.compose-primary:hover {
+  background: hsl(var(--foreground) / 0.88);
+  color: hsl(var(--background));
+}
+
+[data-mailbox-virtual-row="true"]:has(.mailbox-row:hover),
+[data-mailbox-virtual-row="true"]:has(.mailbox-row[data-selected="true"]) {
+  z-index: 4;
+}
+
+[data-sonner-toaster][data-show-error-toasts="false"]
+  [data-sonner-toast][data-type="error"],
+[data-sonner-toaster][data-show-info-toasts="false"]
+  [data-sonner-toast]:is([data-type="info"], [data-type="warning"], [data-type="normal"]),
+[data-sonner-toaster][data-show-success-toasts="false"]
+  [data-sonner-toast][data-type="success"]:not(.toast-category-undo):not(.toast-category-sent),
+[data-sonner-toaster][data-show-undo-toasts="false"] [data-sonner-toast].toast-category-undo,
+[data-sonner-toaster][data-show-sent-toasts="false"] [data-sonner-toast].toast-category-sent {
+  display: none;
 }
 
 /* Animation utilities used across the app. */

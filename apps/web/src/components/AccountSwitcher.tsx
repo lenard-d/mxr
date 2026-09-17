@@ -1,5 +1,6 @@
 import { ChevronDown, Mail, UserPlus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { fetchAccounts } from "@/features/accounts/api";
 import { accountKeyFor, buildMailInboxPath } from "@/features/mailbox/location";
+import { domainFaviconUrls } from "@/lib/emailDomain";
 
 export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const accounts = useQuery({
@@ -33,7 +35,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           aria-label="Account switcher"
         >
           <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-muted text-primary">
-            <Mail className="size-3" />
+            <ProviderFavicon email={account.email} />
           </div>
           {!collapsed && (
             <>
@@ -65,7 +67,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           rows.map((row) => (
             <DropdownMenuItem key={row.account_id} asChild>
               <a href={buildMailInboxPath(accountKeyFor(row))}>
-                <Mail className="size-3" />
+                <ProviderFavicon email={row.email} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{row.name || row.email}</span>
                   <span className="block truncate font-mono text-2xs text-muted-foreground">
@@ -89,5 +91,24 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function ProviderFavicon({ email }: { email?: string }) {
+  const candidates = domainFaviconUrls(email);
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const src = candidates.find((candidate) => !failedSources.includes(candidate));
+
+  if (!src) return <Mail className="size-3" aria-hidden="true" />;
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="size-3 rounded-sm object-contain"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailedSources((current) => [...current, src])}
+    />
   );
 }

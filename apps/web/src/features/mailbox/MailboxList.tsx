@@ -304,7 +304,7 @@ export function MailboxList({
           }
         }
         toggle(row.id);
-      } else if (event.key === "r" || event.key === "u") {
+      } else if (["r", "R", "u", "U"].includes(event.key)) {
         clearGoPrefix();
         event.preventDefault();
         const ids =
@@ -313,7 +313,7 @@ export function MailboxList({
             : rowItems[focusedIndex]
               ? [rowItems[focusedIndex].id]
               : [];
-        if (ids.length > 0) (event.key === "r" ? read : unread).mutate(ids);
+        if (ids.length > 0) (event.key.toLowerCase() === "r" ? read : unread).mutate(ids);
       } else if (event.key === "Enter" || event.key === "o") {
         clearGoPrefix();
         event.preventDefault();
@@ -344,7 +344,7 @@ export function MailboxList({
               ? [rowItems[focusedIndex].id]
               : [];
         if (ids.length > 0) spam.mutate(ids);
-      } else if (event.key === "Delete" || event.key === "Backspace") {
+      } else if (["#", "Delete", "Backspace"].includes(event.key)) {
         clearGoPrefix();
         event.preventDefault();
         const ids =
@@ -437,17 +437,7 @@ export function MailboxList({
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {readOnly ? (
-        <div className="flex h-9 items-center border-b border-border px-3 font-mono text-xs text-muted-foreground">
-          {rows.length} loaded
-          {loadingMore ? " · loading more" : hasMore ? " · scroll for more" : ""}
-        </div>
-      ) : (
-        <BulkActionBar
-          rows={rows}
-          loadedStatus={loadingMore ? "loading more" : hasMore ? "scroll for more" : undefined}
-        />
-      )}
+      {readOnly ? null : <BulkActionBar rows={rows} />}
       <div
         ref={parentRef}
         role="region"
@@ -465,6 +455,7 @@ export function MailboxList({
               <div
                 key={item.kind === "header" ? item.id : item.row.id}
                 data-index={virtualItem.index}
+                data-mailbox-virtual-row={item.kind === "row" ? "true" : undefined}
                 ref={virtualizer.measureElement}
                 className="absolute left-0 top-0 w-full"
                 style={{ transform: `translateY(${virtualItem.start}px)` }}

@@ -319,7 +319,7 @@ describe("ThreadRoute", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
-  test("automatically prefers sanitized HTML and offers contextual remote image loading", async () => {
+  test("automatically prefers sanitized HTML and keeps remote images blocked", async () => {
     const remoteImageUrl = "https://cdn.example.com/hero.jpg";
     api.fetchThread.mockResolvedValueOnce({
       ...thread,
@@ -342,16 +342,7 @@ describe("ThreadRoute", () => {
       .querySelector('img[alt="hero"]');
     expect(blockedImage?.getAttribute("src")).toBeNull();
     expect(blockedImage?.getAttribute("data-original-src")).toBe(remoteImageUrl);
-    expect(screen.getByRole("button", { name: "Load remote images" })).toBeVisible();
-
-    fireEvent.click(screen.getByRole("button", { name: "Load remote images" }));
-
-    await waitFor(() => {
-      expect(frame).toHaveAttribute("srcdoc", expect.stringContaining(remoteImageUrl));
-      expect(
-        screen.queryByRole("button", { name: "Load remote images" }),
-      ).not.toBeInTheDocument();
-    });
+    expect(screen.queryByRole("button", { name: "Load remote images" })).not.toBeInTheDocument();
   });
 
   test("does not schedule mark-read while a split preview keeps mailbox focus", async () => {

@@ -28,6 +28,7 @@ const READER_HINTS: PageHint[] = [
   { key: "F", label: "Full reader" },
   { key: "s", label: "Star" },
   { key: "m", label: "Read/unread" },
+  { key: "R/U", label: "Mark read/unread" },
   { key: "l", label: "Labels" },
   { key: "L", label: "Context" },
   { key: "A", label: "Attachments" },
@@ -36,7 +37,7 @@ const READER_HINTS: PageHint[] = [
   { key: "[/]", label: "Archive & prev/next" },
   { key: "Z", label: "Snooze" },
   { key: "!", label: "Spam" },
-  { key: "Del", label: "Trash" },
+  { key: "#/Del", label: "Trash" },
 ];
 
 const SIDEBAR_HINTS: PageHint[] = [
@@ -55,6 +56,8 @@ const MAILBOX_HINTS: PageHint[] = [
   { key: "e", label: "Archive" },
   { key: "s", label: "Star" },
   { key: "m", label: "Read/unread" },
+  { key: "R/U", label: "Mark read/unread" },
+  { key: "#/Del", label: "Trash" },
 ];
 
 const COMPOSE_HINTS: PageHint[] = [

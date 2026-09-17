@@ -12,7 +12,7 @@ export function SearchInput({ className }: { className?: string } = {}) {
       type="button"
       variant="outline"
       className={cn(
-        "ml-auto h-10 min-w-0 flex-1 justify-start gap-2 px-3 text-left text-xs font-normal text-muted-foreground sm:h-8 sm:w-[340px] sm:flex-none",
+        "ml-auto h-10 min-w-0 flex-1 justify-start gap-2 border-primary/55 bg-primary/10 px-3 text-left text-xs font-normal text-foreground shadow-[0_0_0_1px_hsl(var(--primary)/0.1)] hover:border-primary/80 hover:bg-primary/15 sm:h-8 sm:w-[360px] sm:flex-none",
         className,
       )}
       onClick={() => setSearchOpen(true)}

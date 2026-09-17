@@ -339,6 +339,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         event.preventDefault();
         setSuppressNextReaderFocus(true);
         setActivePane("mailbox");
+      } else if (event.key === "R") {
+        event.preventDefault();
+        markReadAction.mutate(allMessageIds);
+      } else if (event.key === "U") {
+        event.preventDefault();
+        markUnread.mutate(allMessageIds);
       } else if (event.key === "u" || event.key === "Escape") {
         event.preventDefault();
         void navigate({ to: mailboxPath });
@@ -391,7 +397,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         event.preventDefault();
         spam.mutate(allMessageIds);
         void navigate({ to: mailboxPath });
-      } else if (event.key === "Delete" || event.key === "Backspace") {
+      } else if (["#", "Delete", "Backspace"].includes(event.key)) {
         event.preventDefault();
         trash.mutate(allMessageIds);
         void navigate({ to: mailboxPath });
@@ -409,6 +415,8 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     mailboxPath,
     navigate,
     labelDialogOpen,
+    markReadAction,
+    markUnread,
     openRail,
     primarySenderEmail,
     setActivePane,
@@ -456,7 +464,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       },
       {
         label: "Trash",
-        shortcut: "Del",
+        shortcut: "# / Del",
         icon: <Trash2 className="size-3" />,
         destructive: true,
         onSelect: () => trash.mutate(allMessageIds),
@@ -546,68 +554,62 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         setActivePane("reader");
       }}
     >
-      <header className="border-b border-border px-3 py-2.5 sm:px-5 lg:px-6">
-        <div className="flex min-w-0 items-start gap-2">
+      <header className="border-b border-border px-3 py-1.5 sm:px-4">
+        <div className="flex min-w-0 items-center gap-1.5">
           <Button
             type="button"
             variant="ghost"
-            size="icon-lg"
-            className="size-11 shrink-0 sm:size-10"
+            size="icon-sm"
+            className="size-8 shrink-0"
             aria-label="Back to mailbox"
             title="Back to mailbox"
             onClick={() => void navigate({ to: mailboxPath })}
           >
             <ArrowLeft className="size-4" />
           </Button>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="min-w-0 text-pretty text-lg font-semibold tracking-tight">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+              <h1 className="min-w-0 truncate text-base font-semibold tracking-tight">
                 {data.thread.subject || "(no subject)"}
               </h1>
               {threadLabels.map((label) => (
                 <LabelBadge key={label.id} label={label} />
               ))}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>{data.thread.message_count} messages</span>
-              <span>·</span>
-              <span>{data.thread.unread_count} unread</span>
-              <span className="hidden sm:inline">·</span>
-              <span className="hidden min-w-0 truncate sm:inline">
+              </div>
+              <div className="truncate text-2xs text-muted-foreground">
+                {data.thread.message_count} messages · {data.thread.unread_count} unread
+                {data.thread.participants.some((participant) => participant.name?.trim()) ? " · " : ""}
                 {data.thread.participants
-                  .map((participant) => participant.name || participant.email)
+                  .flatMap((participant) => (participant.name?.trim() ? [participant.name.trim()] : []))
                   .slice(0, 4)
                   .join(", ")}
-              </span>
+              </div>
             </div>
           </div>
-          <ReaderActionMenu actions={overflowActions} />
-        </div>
-        <div
-          className="-mx-1 mt-2 flex min-w-0 items-center gap-1 overflow-x-auto border-t border-border/70 px-1 pt-2.5"
-          role="toolbar"
-          aria-label="Message actions"
-        >
-          <ReaderActionButton
-            icon={Reply}
-            label="Reply"
-            shortcut="r"
-            onClick={() => compose("single")}
-          />
-          {canReplyAll ? (
+          <div className="flex shrink-0 items-center gap-0.5" role="toolbar" aria-label="Message actions">
             <ReaderActionButton
-              icon={ReplyAll}
-              label="Reply all"
-              shortcut="a"
-              onClick={() => compose("all")}
+              icon={Reply}
+              label="Reply"
+              shortcut="r"
+              onClick={() => compose("single")}
             />
-          ) : null}
-          <ReaderActionButton
-            icon={Forward}
-            label="Forward"
-            shortcut="f"
-            onClick={() => compose("forward")}
-          />
+            {canReplyAll ? (
+              <ReaderActionButton
+                icon={ReplyAll}
+                label="Reply all"
+                shortcut="a"
+                onClick={() => compose("all")}
+              />
+            ) : null}
+            <ReaderActionButton
+              icon={Forward}
+              label="Forward"
+              shortcut="f"
+              onClick={() => compose("forward")}
+            />
+          </div>
+          <ReaderActionMenu actions={overflowActions} />
         </div>
       </header>
 
@@ -865,7 +867,7 @@ function ReaderActionButton({
       type="button"
       variant="outline"
       size="icon-lg"
-      className="size-11 rounded-md border-border/90 bg-muted/60 shadow-sm hover:border-primary/60 hover:bg-primary/15 sm:size-10"
+      className="size-8 rounded-md border-transparent bg-transparent shadow-none hover:border-border hover:bg-muted"
       aria-label={label}
       title={`${label} (${shortcut})`}
       onClick={onClick}
@@ -907,9 +909,6 @@ function ThreadMessage({
               <LabelBadge key={label.id} label={label} />
             ))}
           </div>
-          <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
-            {message.sender_detail ?? message.provider_id}
-          </div>
           <div className="mt-1 text-xs text-muted-foreground">
             to {formatAddressList(message.to)}
             {message.cc && message.cc.length > 0 ? ` · cc ${formatAddressList(message.cc)}` : null}
@@ -935,7 +934,12 @@ function ThreadMessage({
       )}
       <div className="pb-6 text-[15px] leading-7">
         {html ? (
-          <MessageBody key={message.id} html={html} theme={emailHtmlTheme} />
+          <MessageBody
+            key={message.id}
+            html={html}
+            showRemoteImagesAction={false}
+            theme={emailHtmlTheme}
+          />
         ) : (
           <LinkifiedPre text={plain || "No readable body."} />
         )}

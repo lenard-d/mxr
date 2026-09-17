@@ -810,6 +810,7 @@ export function useComposeSession(
     setSendLaterOpen(false);
     forgetActiveDraft(intent.key);
     toast.success("Send scheduled", {
+      className: "toast-category-sent",
       description: label ? `Sends ${label}` : undefined,
     });
     void queryClient.invalidateQueries({ queryKey: ["drafts"] });
@@ -861,7 +862,7 @@ export function useComposeSession(
         .mutateAsync({ draftPath, accountId, overrideToken })
         .then(async () => {
           forgetActiveDraft(intent.key);
-          toast.success("Message sent");
+          toast.success("Message sent", { className: "toast-category-sent" });
           if (archiveSourceId) {
             try {
               await archiveMessages([archiveSourceId]);
@@ -896,9 +897,10 @@ export function useComposeSession(
       useUndo.getState().setPendingSendCancel(null);
       setPendingSends((count) => Math.max(0, count - 1));
       toast.dismiss(toastId);
-      toast.info("Send cancelled");
+      toast.info("Send cancelled", { className: "toast-category-undo" });
     };
     const toastId = toast(`Sending in ${windowSeconds}s`, {
+      className: "toast-category-undo",
       duration: windowSeconds * 1000,
       description: "z to cancel",
       action: { label: "Undo", onClick: cancel },
