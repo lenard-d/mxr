@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ThreadRoute } from "@/features/thread/ThreadRoute";
+import { LegacyMailRedirect } from "@/features/mailbox/LegacyMailRedirect";
 
 export const Route = createFileRoute("/m/$mailbox/$threadId")({
-  component: ThreadRoute,
+  component: LegacyMailRedirect,
 });

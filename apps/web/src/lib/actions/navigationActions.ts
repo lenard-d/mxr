@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
+import { buildMailMailboxPath, parseMailLocation, type MailLens } from "@/features/mailbox/location";
 import { useModals } from "@/state/modalStore";
 
 import { getRuntimeNavigate } from "./runtime";
@@ -24,6 +25,15 @@ import type { Action } from "./types";
 
 function go(to: string): () => void {
   return () => getRuntimeNavigate().navigate(to);
+}
+
+function goMail(lens: MailLens): () => void {
+  return () => {
+    const location =
+      typeof window === "undefined" ? null : parseMailLocation(window.location.pathname);
+    const accountKey = location?.source === "canonical" ? location.accountKey : "all";
+    getRuntimeNavigate().navigate(buildMailMailboxPath({ accountKey, lens }));
+  };
 }
 
 export const navigationActions: Action[] = [
@@ -72,7 +82,7 @@ export const navigationActions: Action[] = [
     icon: Inbox,
     shortcut: "g i",
     aliases: ["1", "Digit1"],
-    run: go("/m/inbox"),
+    run: goMail({ kind: "inbox" }),
   },
   {
     id: "nav.starred",
@@ -80,7 +90,7 @@ export const navigationActions: Action[] = [
     group: "Navigate",
     icon: Star,
     shortcut: "g s",
-    run: go("/m/starred"),
+    run: goMail({ kind: "label", labelId: "starred" }),
   },
   {
     id: "nav.drafts",
@@ -96,7 +106,7 @@ export const navigationActions: Action[] = [
     group: "Navigate",
     icon: Send,
     paletteOnly: true,
-    run: go("/m/sent"),
+    run: goMail({ kind: "label", labelId: "sent" }),
   },
   {
     id: "nav.archive",
@@ -104,21 +114,21 @@ export const navigationActions: Action[] = [
     group: "Navigate",
     icon: Archive,
     shortcut: "g a",
-    run: go("/m/archive"),
+    run: goMail({ kind: "archive" }),
   },
   {
     id: "nav.trash",
     label: "Go to Trash",
     group: "Navigate",
     shortcut: "g t",
-    run: go("/m/trash"),
+    run: goMail({ kind: "label", labelId: "trash" }),
   },
   {
     id: "nav.snoozed",
     label: "Go to Snoozed",
     group: "Navigate",
     shortcut: "g n",
-    run: go("/m/snoozed"),
+    run: goMail({ kind: "label", labelId: "snoozed" }),
   },
   {
     id: "nav.reply-queue",

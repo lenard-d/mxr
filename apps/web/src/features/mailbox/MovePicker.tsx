@@ -1,11 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchShell } from "@/features/mailbox/api";
 import { useOptimisticMailMutation } from "@/features/mailbox/useOptimisticMailMutation";
 import type { SidebarItem } from "@/features/mailbox/types";
+import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 
 interface MovePickerProps {
   messageIds: string[];
@@ -13,7 +12,7 @@ interface MovePickerProps {
 }
 
 export function MovePicker({ messageIds, onClose }: MovePickerProps) {
-  const shell = useQuery({ queryKey: ["shell"], queryFn: fetchShell, staleTime: 60_000 });
+  const shell = useShellQuery();
   const [filter, setFilter] = useState("");
 
   const targets = useMemo(() => {

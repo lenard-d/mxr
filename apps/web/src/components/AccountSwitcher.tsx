@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fetchAccounts } from "@/features/accounts/api";
+import { accountKeyFor, buildMailInboxPath } from "@/features/mailbox/location";
 
 export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const accounts = useQuery({
@@ -63,7 +64,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
         ) : (
           rows.map((row) => (
             <DropdownMenuItem key={row.account_id} asChild>
-              <a href={`/accounts/${encodeURIComponent(row.key ?? row.account_id)}`}>
+              <a href={buildMailInboxPath(accountKeyFor(row))}>
                 <Mail className="size-3" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{row.name || row.email}</span>

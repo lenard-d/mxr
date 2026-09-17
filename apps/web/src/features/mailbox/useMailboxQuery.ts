@@ -1,10 +1,32 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 
-import { fetchMailbox, fetchShell, mailboxKey, shellKey, type MailboxLensParams } from "./api";
+import { fetchAccounts } from "@/features/accounts/api";
+import type { RuntimeAccount } from "@/features/compose/api";
+import {
+  fetchMailbox,
+  fetchShell,
+  mailboxKey,
+  shellQueryKey,
+  type MailboxLensParams,
+} from "./api";
+import {
+  parseMailLocation,
+  resolveMailAccount,
+  type MailAccountResolution,
+  type MailLocation,
+} from "./location";
 import type { MailboxResponse, MessageGroupView, ShellResponse, SidebarItem } from "./types";
 
 const MAILBOX_PAGE_SIZE = 200;
+
+interface MailContext {
+  pathname: string;
+  location: MailLocation | null;
+  accountQuery: UseQueryResult<{ accounts: RuntimeAccount[] }>;
+  accountResolution: MailAccountResolution;
+  accountId?: string;
+}
 
 function slugify(value: string): string {
   return value
@@ -18,63 +40,112 @@ function itemsFromShell(shell?: ShellResponse): SidebarItem[] {
   return shell?.sidebar?.sections?.flatMap((section) => section.items) ?? [];
 }
 
-function lensFromItem(item: SidebarItem): MailboxLensParams | undefined {
-  const lens = item.lens;
+function withAccountId(accountId: string | undefined, lens: MailboxLensParams): MailboxLensParams {
+  return accountId ? { account_id: accountId, ...lens } : lens;
+}
+
+function lensFromItem(
+  item: SidebarItem | undefined,
+  accountId: string | undefined,
+): MailboxLensParams | undefined {
+  const lens = item?.lens;
   if (!lens) return undefined;
   if (lens.kind === "label" && lens.labelId) {
-    return { lens_kind: "label", label_id: lens.labelId };
+    return withAccountId(accountId, { lens_kind: "label", label_id: lens.labelId });
   }
   if (lens.kind === "saved_search" && lens.savedSearch) {
-    return { lens_kind: "saved_search", saved_search: lens.savedSearch };
+    return withAccountId(accountId, { lens_kind: "saved_search", saved_search: lens.savedSearch });
   }
   if (lens.kind === "subscription" && lens.senderEmail) {
-    return { lens_kind: "subscription", sender_email: lens.senderEmail };
+    return withAccountId(accountId, { lens_kind: "subscription", sender_email: lens.senderEmail });
   }
-  if (lens.kind === "all_mail") return { lens_kind: "all_mail" };
-  if (lens.kind === "inbox") return { lens_kind: "inbox" };
+  if (lens.kind === "all_mail") return withAccountId(accountId, { lens_kind: "all_mail" });
+  if (lens.kind === "inbox") return withAccountId(accountId, { lens_kind: "inbox" });
   return undefined;
 }
 
-export function resolveMailboxLens(pathname: string, shell?: ShellResponse): MailboxLensParams {
-  const items = itemsFromShell(shell);
-  const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  if (parts[0] !== "m") return { lens_kind: "inbox" };
+export function resolveMailboxLens(
+  pathname: string,
+  shell?: ShellResponse,
+  accountId?: string,
+): MailboxLensParams {
+  const location = parseMailLocation(pathname);
+  if (!location) return withAccountId(accountId, { lens_kind: "inbox" });
 
-  if (parts[1] === "label" && parts[2]) {
-    const target = parts[2];
-    const item = items.find(
-      (candidate) => candidate.id === target || slugify(candidate.label) === target,
-    );
-    return lensFromItem(item ?? ({} as SidebarItem)) ?? { lens_kind: "all_mail" };
+  if (location.lens.kind === "inbox") {
+    return withAccountId(accountId, { lens_kind: "inbox" });
+  }
+  if (location.lens.kind === "archive") {
+    return withAccountId(accountId, { lens_kind: "all_mail" });
   }
 
-  if (parts[1] === "saved" && parts[2]) {
-    const target = parts[2];
+  const items = itemsFromShell(shell);
+  if (location.lens.kind === "saved") {
+    const target = location.lens.slug;
     const item = items.find(
       (candidate) =>
         candidate.id === `saved-search-${target}` || slugify(candidate.label) === target,
     );
-    return lensFromItem(item ?? ({} as SidebarItem)) ?? { lens_kind: "inbox" };
+    return (
+      lensFromItem(item, accountId) ??
+      withAccountId(accountId, { lens_kind: "saved_search", saved_search: target })
+    );
   }
 
-  const mailbox = parts[1] ?? "inbox";
-  if (mailbox === "inbox") return { lens_kind: "inbox" };
-  if (mailbox === "archive" || mailbox === "all-mail") return { lens_kind: "all_mail" };
+  const target = location.lens.labelId;
   const item = items.find(
-    (candidate) => slugify(candidate.label) === mailbox || candidate.id === mailbox,
+    (candidate) => candidate.id === target || slugify(candidate.label) === target,
   );
-  return lensFromItem(item ?? ({} as SidebarItem)) ?? { lens_kind: "all_mail" };
+  return (
+    lensFromItem(item, accountId) ??
+    withAccountId(accountId, { lens_kind: "label", label_id: target })
+  );
+}
+
+function useMailContext(): MailContext {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const location = parseMailLocation(pathname);
+  const accountQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: fetchAccounts,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const accountKey = location?.source === "canonical" ? location.accountKey : undefined;
+  const accountResolution = accountQuery.isSuccess
+    ? resolveMailAccount(accountKey, accountQuery.data.accounts)
+    : accountKey
+      ? { status: "loading", accountKey }
+      : { status: "all", accountKey: "all" };
+  const accountId = accountResolution.status === "resolved" ? accountResolution.accountId : undefined;
+  return { pathname, location, accountQuery, accountResolution, accountId };
 }
 
 export function useShellQuery() {
-  return useQuery({ queryKey: shellKey, queryFn: fetchShell, staleTime: 30_000 });
+  const context = useMailContext();
+  const canLoadShell =
+    !context.accountQuery.isError &&
+    (context.accountResolution.status === "resolved" || context.accountResolution.status === "all");
+  const shell = useQuery({
+    queryKey: shellQueryKey(context.accountId),
+    queryFn: () => fetchShell(context.accountId),
+    enabled: canLoadShell,
+    staleTime: 30_000,
+  });
+  return {
+    ...shell,
+    accountQuery: context.accountQuery,
+    accountResolution: context.accountResolution,
+    accountId: context.accountId,
+    location: context.location,
+    pathname: context.pathname,
+  };
 }
 
 export function useMailboxQuery() {
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const shell = useShellQuery();
-  const lens = resolveMailboxLens(pathname, shell.data);
-  return useInfiniteQuery({
+  const lens = resolveMailboxLens(shell.pathname, shell.data, shell.accountId);
+  const query = useInfiniteQuery({
     queryKey: mailboxKey({ ...lens, view: "threads", limit: MAILBOX_PAGE_SIZE }),
     queryFn: ({ pageParam }) =>
       fetchMailbox({ ...lens, view: "threads", limit: MAILBOX_PAGE_SIZE, offset: pageParam }),
@@ -99,6 +170,13 @@ export function useMailboxQuery() {
     enabled: shell.isSuccess,
     staleTime: 10_000,
   });
+  return {
+    ...query,
+    accountQuery: shell.accountQuery,
+    accountResolution: shell.accountResolution,
+    accountId: shell.accountId,
+    location: shell.location,
+  };
 }
 
 function mergeMailboxPages(pages: MailboxResponse[]): MailboxResponse | undefined {

@@ -23,8 +23,8 @@ import {
   useSemanticProfile,
   type SemanticProfile,
 } from "@/features/diagnostics/api";
-import { fetchShell } from "@/features/mailbox/api";
 import type { SidebarItem } from "@/features/mailbox/types";
+import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import {
   formatChord,
   useActionContext,
@@ -54,12 +54,7 @@ export function CommandPaletteMount() {
   const open = useModals((state) => state.commandPaletteOpen);
   const setOpen = useModals((state) => state.setCommandPaletteOpen);
 
-  const shell = useQuery({
-    queryKey: ["shell"],
-    queryFn: fetchShell,
-    staleTime: 60_000,
-    enabled: open,
-  });
+  const shell = useShellQuery();
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: fetchAccounts,

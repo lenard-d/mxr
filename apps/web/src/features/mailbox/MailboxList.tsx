@@ -13,6 +13,7 @@ import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { buildMailThreadPathFromMailboxPath } from "@/features/mailbox/location";
 import { Inbox } from "lucide-react";
 
 interface MailboxListProps {
@@ -144,11 +145,7 @@ export function MailboxList({
       setActivePane(pane);
       setSuppressNextReaderFocus(pane === "mailbox");
       void navigate({
-        to: "/m/$mailbox/$threadId",
-        params: {
-          mailbox: mailboxSegment(mailboxPath),
-          threadId: row.thread_id,
-        },
+        to: buildMailThreadPathFromMailboxPath(mailboxPath, row.thread_id),
       });
     },
     [mailboxPath, navigate, setActivePane, setSuppressNextReaderFocus],
@@ -486,9 +483,4 @@ function flatten(groups: MessageGroupView[]): FlatItem[] {
     for (const row of group.rows) items.push({ kind: "row", row });
   }
   return items;
-}
-
-function mailboxSegment(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts[1] && parts[1] !== "label" && parts[1] !== "saved" ? parts[1] : "inbox";
 }

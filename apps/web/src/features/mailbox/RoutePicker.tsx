@@ -1,11 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchShell } from "@/features/mailbox/api";
 import type { SidebarItem } from "@/features/mailbox/types";
 import { useOptimisticMailMutation } from "@/features/mailbox/useOptimisticMailMutation";
+import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 
 interface RoutePickerProps {
   messageIds: string[];
@@ -15,7 +14,7 @@ interface RoutePickerProps {
 }
 
 export function RoutePicker({ messageIds, fromQueueLabel, archive = true, onClose }: RoutePickerProps) {
-  const shell = useQuery({ queryKey: ["shell"], queryFn: fetchShell, staleTime: 60_000 });
+  const shell = useShellQuery();
   const [filter, setFilter] = useState("");
 
   const targets = useMemo(() => {

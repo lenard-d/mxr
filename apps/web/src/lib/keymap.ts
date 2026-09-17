@@ -12,6 +12,7 @@ import type { KeyBindingMap } from "tinykeys";
 
 import { getRegistry, setRuntimeNavigate } from "@/lib/actions";
 import type { ActionContext } from "@/lib/actions";
+import { hasMailThread } from "@/features/mailbox/location";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
@@ -21,9 +22,6 @@ interface Navigator {
   navigate: (to: string) => void;
 }
 
-const THREAD_PATH_RE = /^\/m\/[^/]+\/[^/]+/;
-const MESSAGE_PATH_RE = /^\/m\/[^/]+\/[^/]+\/[^/]+/;
-
 function buildContextSnapshot(): ActionContext {
   const path = typeof window !== "undefined" ? window.location.pathname : "/";
   return {
@@ -31,8 +29,8 @@ function buildContextSnapshot(): ActionContext {
     activePane: useMailboxPane.getState().activePane,
     selectionCount: useSelection.getState().ids.size,
     accountCount: 0,
-    hasFocusedThread: THREAD_PATH_RE.test(path),
-    hasFocusedMessage: MESSAGE_PATH_RE.test(path),
+    hasFocusedThread: hasMailThread(path),
+    hasFocusedMessage: false,
     isFirstAccountOnly: false,
   };
 }

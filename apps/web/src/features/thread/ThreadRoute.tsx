@@ -45,6 +45,11 @@ import {
   shellKey,
   summarizeThread,
 } from "@/features/mailbox/api";
+import {
+  buildMailThreadPathFromMailboxPath,
+  mailboxPathFromLocation,
+  parseMailLocation,
+} from "@/features/mailbox/location";
 import { SnoozeDialog } from "@/features/mailbox/SnoozeDialog";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
 import { InviteCard } from "@/features/thread/InviteCard";
@@ -111,9 +116,9 @@ interface ThreadCommitmentView {
 export function ThreadRoute() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const readerLayout = useUiPrefs((state) => state.readerLayout);
-  const parts = pathname.split("/").filter(Boolean);
-  const threadId = parts[parts.length - 1] ?? "";
-  const mailboxPath = `/${parts.slice(0, -1).join("/")}`;
+  const location = parseMailLocation(pathname);
+  const threadId = location?.threadId ?? "";
+  const mailboxPath = location ? mailboxPathFromLocation(location) : "/";
   const readerFull = readerLayout === "full";
   return (
     <div className="flex min-h-0 min-w-0 flex-1 bg-background">
@@ -312,7 +317,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       const nextId = index >= 0 ? siblings[index + delta] : undefined;
       archive.mutate(allMessageIds);
       if (nextId) {
-        void navigate({ to: `${mailboxPath}/${nextId}` });
+        void navigate({ to: buildMailThreadPathFromMailboxPath(mailboxPath, nextId) });
       } else {
         void navigate({ to: mailboxPath });
       }

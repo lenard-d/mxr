@@ -9,15 +9,13 @@ import { useMemo } from "react";
 
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
+import { hasMailThread } from "@/features/mailbox/location";
 
 import type { ActionContext } from "./types";
 
 interface ActionContextOverrides {
   accountCount?: number;
 }
-
-const THREAD_PATH_RE = /^\/m\/[^/]+\/[^/]+/;
-const MESSAGE_PATH_RE = /^\/m\/[^/]+\/[^/]+\/[^/]+/;
 
 export function useActionContext(overrides: ActionContextOverrides = {}): ActionContext {
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -31,8 +29,8 @@ export function useActionContext(overrides: ActionContextOverrides = {}): Action
       activePane,
       selectionCount,
       accountCount,
-      hasFocusedThread: THREAD_PATH_RE.test(path),
-      hasFocusedMessage: MESSAGE_PATH_RE.test(path),
+      hasFocusedThread: hasMailThread(path),
+      hasFocusedMessage: false,
       isFirstAccountOnly: accountCount === 1,
     };
   }, [path, activePane, selectionCount, accountCount]);

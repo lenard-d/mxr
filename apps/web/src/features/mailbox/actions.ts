@@ -31,11 +31,11 @@ import { getActiveQueryClient } from "@/lib/queryClient";
 import { or, withFocusedThread, withSelection } from "@/lib/actions/when";
 import { useModals } from "@/state/modalStore";
 import { useSelection } from "@/state/selectionStore";
+import { parseMailLocation } from "@/features/mailbox/location";
 
 function focusedThreadId(): string | null {
   if (typeof window === "undefined") return null;
-  const match = window.location.pathname.match(/^\/m\/[^/]+\/([^/]+)/);
-  return match?.[1] ?? null;
+  return parseMailLocation(window.location.pathname)?.threadId ?? null;
 }
 
 function cachedThread(threadId: string): ThreadResponse | undefined {
@@ -57,8 +57,8 @@ function focusedSender(): { address: string; accountId?: string } | null {
 
 function activeRouteQueueLabel(): string | null {
   if (typeof window === "undefined") return null;
-  const match = window.location.pathname.match(/^\/m\/label\/([^/]+)/);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
+  const location = parseMailLocation(window.location.pathname);
+  return location?.lens.kind === "label" ? location.lens.labelId : null;
 }
 
 function targetMessageIds(): string[] {
