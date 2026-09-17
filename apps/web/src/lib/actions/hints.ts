@@ -9,7 +9,7 @@
 import { useMemo } from "react";
 
 import { type PageHintSection, pageHintsForRoute } from "@/lib/pageKeyHints";
-import { getEffectiveShortcut } from "@/lib/keybindings";
+import { getEffectiveShortcut, type ShortcutPreferences } from "@/lib/keybindings";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import "./catalog";
@@ -59,9 +59,9 @@ const GROUP_ORDER: ActionGroup[] = [
 export function actionShortcutSections(
   ctx: ActionContext,
   pageSections: PageHintSection[] = [],
+  preferences: ShortcutPreferences = useUiPrefs.getState().keybindings,
 ): ShortcutSection[] {
   const reg = getRegistry();
-  const preferences = useUiPrefs.getState().keybindings;
   const visible = reg.getVisibleActions(ctx);
 
   const grouped = new Map<ActionGroup, ShortcutHint[]>();
@@ -94,7 +94,7 @@ export function useActionShortcutSections(ctx: ActionContext): ShortcutSection[]
   const keybindings = useUiPrefs((state) => state.keybindings);
   const pageSections = pageHintsForRoute(ctx);
   return useMemo(
-    () => actionShortcutSections(ctx, pageSections),
+    () => actionShortcutSections(ctx, pageSections, keybindings),
     [ctx, keybindings, pageSections],
   );
 }

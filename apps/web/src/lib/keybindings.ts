@@ -581,7 +581,7 @@ function canonicalToken(value: string): string {
             ? ";"
             : rawKey;
   const order = ["$mod", "Control", "Meta", "Alt", "Shift"];
-  const tokenModifiers = pieces.slice(0, -1).sort((first, second) => {
+  const tokenModifiers = pieces.slice(0, -1).toSorted((first, second) => {
     return order.indexOf(first) - order.indexOf(second);
   });
   return [...tokenModifiers, key].join("+");

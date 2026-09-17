@@ -187,12 +187,12 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
             })),
           }))
         : [{ label: "Lenses", items: scopedMailItems(fallbackLenses, accountKey) }];
-    const sections = [
+    const visibleSections = [
       { label: "Workspace", items: scopedMailItems(visiblePrimary, accountKey) },
       ...lensSections,
       { label: "System", items: visibleSystem },
     ];
-    return sections.filter((section) => section.items.length > 0);
+    return visibleSections.filter((section) => section.items.length > 0);
   }, [accountKey, dynamicSections, sidebarVisibility]);
   const navigationItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);
 
@@ -302,7 +302,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
         <SidebarSettingsButton
           onClick={() => {
             onNavigate?.();
-            void navigate({ to: "/settings/theme" });
+            void navigate({ to: "/settings/$section", params: { section: "theme" } });
           }}
         />
         <ConnectionPill compact className="size-9 shrink-0" />
