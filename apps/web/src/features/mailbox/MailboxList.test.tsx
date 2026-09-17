@@ -269,6 +269,25 @@ describe("MailboxList keyboard selection", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  test("keeps the selected checkbox checked while the row is hovered", () => {
+    render(
+      <MailboxRow
+        row={rows[0]!}
+        selected
+        focused={false}
+        onOpen={vi.fn<() => void>()}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+      />,
+    );
+
+    const checkbox = screen.getByRole("checkbox", { name: /deselect message/i });
+    fireEvent.mouseEnter(screen.getByRole("article"));
+
+    expect(checkbox).toHaveAttribute("data-state", "checked");
+    expect(checkbox.querySelector("svg")).toBeInTheDocument();
+  });
+
   test("keeps a visible square checkbox and a single-line subject/snippet lane", () => {
     const { container } = render(
       <MailboxRow
@@ -286,8 +305,26 @@ describe("MailboxList keyboard selection", () => {
       "rounded-none",
       "mailbox-checkbox",
     );
-    const contentLane = container.querySelector(".mailbox-row-subject")?.parentElement;
+    const selectionLane = container.querySelector('[data-mailbox-control="selection"]');
+    expect(selectionLane).toHaveClass("mailbox-selection-lane", "size-8");
+
+    const subject = container.querySelector(".mailbox-row-subject");
+    expect(subject).toHaveClass("min-w-0", "shrink");
+    expect(subject).not.toHaveClass("max-w-[48%]");
+    const contentLane = subject?.parentElement;
     expect(contentLane).toContainElement(container.querySelector(".mailbox-row-snippet"));
+    expect(container.querySelector(".mailbox-row-snippet")).toHaveClass("min-w-0", "flex-1");
+
+    const quickActions = container.querySelector(".mailbox-row-quick-actions");
+    expect(quickActions).not.toHaveClass("bg-inherit");
+    expect(screen.getByRole("button", { name: "Archive" })).toHaveClass(
+      "size-10",
+      "rounded-md",
+      "md:size-8",
+    );
+    expect(screen.getByRole("button", { name: "Archive" }).querySelector("svg")).toHaveClass(
+      "size-4",
+    );
     expect(screen.getByRole("article")).toHaveAttribute("aria-roledescription", "draggable");
     expect(screen.queryByRole("button", { name: /drag/i })).not.toBeInTheDocument();
   });
@@ -337,6 +374,7 @@ describe("MailboxList readOnly mode", () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
     const master = await screen.findByRole("checkbox", { name: /select all messages in view/i });
+    expect(master.parentElement).toHaveClass("mailbox-selection-lane", "size-8");
     expect(master).toHaveAttribute("data-state", "indeterminate");
     expect(master).toHaveAttribute("aria-checked", "mixed");
 
