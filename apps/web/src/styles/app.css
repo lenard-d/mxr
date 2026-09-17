@@ -86,6 +86,24 @@
   }
 }
 
+[data-density="compact"] .mailbox-row {
+  gap: calc(var(--spacing) * 1.5);
+  padding-inline: calc(var(--spacing) * 2);
+}
+
+[data-density="compact"] .mailbox-row-subject,
+[data-density="compact"] .mailbox-row-sender {
+  line-height: 1.2;
+}
+
+[data-density="compact"] .mailbox-row-snippet {
+  display: none;
+}
+
+[data-density="compact"] .mailbox-group-header {
+  height: 26px;
+}
+
 /* Animation utilities used across the app. */
 @utility row-exit {
   animation: row-exit var(--motion-duration-base) var(--motion-ease) forwards;

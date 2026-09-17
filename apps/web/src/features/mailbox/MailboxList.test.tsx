@@ -22,10 +22,6 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => router.navigate,
 }));
 
-vi.mock("./BulkActionBar", () => ({
-  BulkActionBar: () => null,
-}));
-
 vi.mock("./useOptimisticMailMutation", () => ({
   useOptimisticMailMutation: () => mutation,
 }));
@@ -229,6 +225,39 @@ describe("MailboxList keyboard selection", () => {
     expect(screen.getByLabelText("2 open commitments")).toBeVisible();
     expect(screen.getByRole("article", { name: /2 open commitments/i })).toBeVisible();
   });
+
+  test("r marks the selected rows read and u marks the focused row unread", async () => {
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+
+    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "r" });
+    expect(mutation.mutate).toHaveBeenCalledWith(["msg-1"]);
+
+    mutation.mutate.mockClear();
+    fireEvent.keyDown(window, { key: "u" });
+    expect(mutation.mutate).toHaveBeenCalledWith(["msg-1"]);
+  });
+
+  test("row controls do not bubble Enter or Space into thread opening", () => {
+    const onOpen = vi.fn<() => void>();
+    render(
+      <MailboxRow
+        row={rows[0]!}
+        selected={false}
+        focused={false}
+        onOpen={onOpen}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+      />,
+    );
+
+    const checkbox = screen.getByRole("checkbox", { name: /select message/i });
+    fireEvent.keyDown(checkbox, { key: " " });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Star" }), { key: "Enter" });
+
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });
 
 describe("MailboxList readOnly mode", () => {
@@ -260,7 +289,19 @@ describe("MailboxList readOnly mode", () => {
 
   test("non-readOnly still exposes bulk selection", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
-    expect(await screen.findByRole("button", { name: /select all/i })).toBeVisible();
+    expect(await screen.findByRole("checkbox", { name: /select all loaded messages/i })).toBeVisible();
+  });
+
+  test("shows an indeterminate master checkbox when only some loaded rows are selected", async () => {
+    useSelection.getState().selectMany(["msg-1"]);
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+
+    const master = await screen.findByRole("checkbox", { name: /select all loaded messages/i });
+    expect(master).toHaveAttribute("data-state", "indeterminate");
+    expect(master).toHaveAttribute("aria-checked", "mixed");
+
+    fireEvent.click(master);
+    expect([...useSelection.getState().ids]).toEqual(["msg-1", "msg-2", "msg-3"]);
   });
 });
 

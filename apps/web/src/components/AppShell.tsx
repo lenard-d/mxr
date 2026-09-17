@@ -13,6 +13,7 @@ import { Topbar } from "@/components/Topbar";
 import { CommandPaletteMount } from "@/features/command-palette/CommandPalette";
 import { ComposeHost } from "@/features/compose/ComposeHost";
 import { ComposeLauncher } from "@/features/compose/ComposeLauncher";
+import { MailDndProvider } from "@/features/mailbox/MailDndContext";
 import { SearchPalette } from "@/features/search/SearchPalette";
 import { fetchAccounts } from "@/features/accounts/api";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
@@ -72,41 +73,43 @@ export function AppShell() {
   }, [accounts.data?.accounts.length, navigate, path]);
 
   return (
-    <div
-      className="app-shell"
-      data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-      data-rightrail-open={rightRail ? "true" : "false"}
-    >
-      <div className="app-shell-sidebar">
-        <Sidebar />
-      </div>
-      <div className="app-shell-topbar">
-        <Topbar />
-      </div>
-      <div className="app-shell-main">
-        <OfflineBanner />
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
-      </div>
-      {rightRail ? (
-        <div
-          className="app-shell-rightrail"
-          onPointerDown={(event) => {
-            if (event.target === event.currentTarget) closeRightRail();
-          }}
-        >
-          <RightRail />
+    <MailDndProvider>
+      <div
+        className="app-shell"
+        data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+        data-rightrail-open={rightRail ? "true" : "false"}
+      >
+        <div className="app-shell-sidebar">
+          <Sidebar />
         </div>
-      ) : null}
-      <div className="app-shell-statusbar">
-        <StatusBar />
+        <div className="app-shell-topbar">
+          <Topbar />
+        </div>
+        <div className="app-shell-main">
+          <OfflineBanner />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </div>
+        {rightRail ? (
+          <div
+            className="app-shell-rightrail"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) closeRightRail();
+            }}
+          >
+            <RightRail />
+          </div>
+        ) : null}
+        <div className="app-shell-statusbar">
+          <StatusBar />
+        </div>
       </div>
       <CommandPaletteMount />
       <ComposeLauncher />
       <ComposeHost />
       <SearchPalette />
       <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} path={path} activePane={activePane} />
-    </div>
+    </MailDndProvider>
   );
 }

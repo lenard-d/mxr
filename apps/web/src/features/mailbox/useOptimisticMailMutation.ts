@@ -65,8 +65,20 @@ export interface MailActionPayload {
   archive?: boolean;
 }
 
+/**
+ * Per-call mutation input. Existing callers can keep passing `string[]`; the
+ * object form is used when a drop target supplies a dynamic label payload.
+ */
+export interface MailMutationInput {
+  messageIds: string[];
+  payload?: MailActionPayload;
+}
+
+export type MailMutationVariables = string[] | MailMutationInput;
+
 interface MutationContext {
   snapshots: Array<[readonly unknown[], unknown]>;
+  payload?: MailActionPayload;
 }
 
 const AUTH_RECOVERY_ERROR =
@@ -82,8 +94,26 @@ const destructiveActions = new Set<MailAction>([
   "label-remove",
 ]);
 
+interface InfiniteMailboxData {
+  pages: MailboxResponse[];
+  pageParams: unknown[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function isMailboxResponse(value: unknown): value is MailboxResponse {
-  return typeof value === "object" && value !== null && "mailbox" in value;
+  return isRecord(value) && isRecord(value.mailbox) && Array.isArray(value.mailbox.groups);
+}
+
+function isInfiniteMailboxData(value: unknown): value is InfiniteMailboxData {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.pages) &&
+    Array.isArray(value.pageParams) &&
+    value.pages.every(isMailboxResponse)
+  );
 }
 
 function mapMailboxRows(
@@ -116,9 +146,17 @@ function snapshotAndMutate(qc: QueryClient, ids: string[], action: MailAction): 
   const idSet = new Set(ids);
   const snapshots: MutationContext["snapshots"] = [];
   for (const [queryKey, data] of qc.getQueriesData({ queryKey: ["mailbox"] })) {
-    if (!isMailboxResponse(data)) continue;
+    if (isMailboxResponse(data)) {
+      snapshots.push([queryKey, data]);
+      qc.setQueryData(queryKey, mapMailboxRows(data, idSet, action));
+      continue;
+    }
+    if (!isInfiniteMailboxData(data)) continue;
     snapshots.push([queryKey, data]);
-    qc.setQueryData(queryKey, mapMailboxRows(data, idSet, action));
+    qc.setQueryData(queryKey, {
+      ...data,
+      pages: data.pages.map((page) => mapMailboxRows(page, idSet, action)),
+    });
   }
   return { snapshots };
 }
@@ -260,29 +298,44 @@ export interface MailMutationOptions {
   payload?: MailActionPayload;
 }
 
+function normalizeMutationInput(
+  input: MailMutationVariables,
+  fallbackPayload?: MailActionPayload,
+): MailMutationInput {
+  if (Array.isArray(input)) return { messageIds: input, payload: fallbackPayload };
+  return {
+    messageIds: input.messageIds,
+    payload: input.payload ?? fallbackPayload,
+  };
+}
+
 export function useOptimisticMailMutation(action: MailAction, options: MailMutationOptions = {}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const clearSelection = useSelection((state) => state.clear);
   const { silentSuccess, payload } = options;
   return useMutation({
-    mutationFn: async (messageIds: string[]) => {
+    mutationFn: async (input: MailMutationVariables) => {
+      const { messageIds, payload: resolvedPayload } = normalizeMutationInput(input, payload);
       const response = await requestCoordinator.enqueueMutation(() =>
-        runAction(action, messageIds, payload),
+        runAction(action, messageIds, resolvedPayload),
       );
       assertMutationCompleted(response, messageIds.length);
       return response;
     },
-    onMutate: async (messageIds) => {
+    onMutate: async (input) => {
+      const { messageIds, payload: resolvedPayload } = normalizeMutationInput(input, payload);
       await qc.cancelQueries({ queryKey: ["mailbox"] });
       const context = snapshotAndMutate(qc, messageIds, action);
       clearSelection();
-      return context;
+      return { ...context, payload: resolvedPayload };
     },
-    onError: (error, _messageIds, context) => {
+    onError: (error, input, context) => {
+      const resolvedPayload =
+        context?.payload ?? normalizeMutationInput(input, payload).payload;
       restore(qc, context);
       const reauthAccount = findReauthableAccount(error);
-      toast.error(`${actionLabel(action, payload)} failed`, {
+      toast.error(`${actionLabel(action, resolvedPayload)} failed`, {
         description: error.message,
         action: reauthAccount
           ? {
@@ -298,10 +351,11 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
           : undefined,
       });
     },
-    onSuccess: (response, messageIds) => {
+    onSuccess: (response, input) => {
       if (silentSuccess) return;
+      const { messageIds, payload: resolvedPayload } = normalizeMutationInput(input, payload);
       const count = response.result?.succeeded ?? messageIds.length;
-      const label = actionLabel(action, payload);
+      const label = actionLabel(action, resolvedPayload);
       const mutationId = response.result?.mutation_id;
       if (mutationId) {
         useUndo.getState().setLastMutationId(mutationId);

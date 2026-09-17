@@ -1,21 +1,22 @@
 import {
   Archive,
-  Check,
+  ClipboardList,
   Link as LinkIcon,
   MailOpen,
   MessagesSquare,
   Paperclip,
-  ClipboardList,
   ShieldAlert,
   Star,
   Trash2,
 } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
+import { MailDragHandle, type MailDragSource } from "./MailDndContext";
 import type { MessageRowView } from "./types";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
 interface MailboxRowProps {
@@ -23,8 +24,12 @@ interface MailboxRowProps {
   selected: boolean;
   focused: boolean;
   onOpen: () => void;
+  onOpenWithKeyboard?: () => void;
   onFocusPane: () => void;
   onToggleSelection: (shift: boolean) => void;
+  onFocusRow?: () => void;
+  /** Rows that should move together when this row's drag handle is used. */
+  dragSource?: MailDragSource;
   /**
    * Read-only rows drop the selection checkbox, star toggle, and hover
    * quick-actions (archive/trash/spam/read). Used for lists whose rows
@@ -41,82 +46,106 @@ export function MailboxRow({
   selected,
   focused,
   onOpen,
+  onOpenWithKeyboard,
   onFocusPane,
   onToggleSelection,
+  onFocusRow,
+  dragSource,
   readOnly = false,
   trailingAction,
 }: MailboxRowProps) {
   const star = useOptimisticMailMutation(row.starred ? "unstar" : "star");
   const read = useOptimisticMailMutation(row.unread ? "read" : "unread");
+  const selectionShiftRef = useRef(false);
   const conversationCount =
     typeof row.message_count === "number" && row.message_count > 1 ? row.message_count : null;
   const openCommitmentCount =
     typeof row.open_commitment_count === "number" && row.open_commitment_count > 0
       ? row.open_commitment_count
       : null;
-
-  function toggleSelection(event: MouseEvent) {
-    event.stopPropagation();
-    onToggleSelection(event.shiftKey);
-  }
+  const subject = row.subject || "(no subject)";
+  const rowState = `${row.unread ? "unread" : "read"}${selected ? ", selected" : ""}${focused ? ", keyboard focused" : ""}`;
 
   return (
     <div
       role="article"
       tabIndex={0}
       data-read-only={readOnly ? "true" : "false"}
+      aria-label={`${rowState}: ${row.sender} ${subject} ${conversationCount ? `conversation thread with ${conversationCount} messages` : ""} ${openCommitmentCount ? `${openCommitmentCount} open ${openCommitmentCount === 1 ? "commitment" : "commitments"}` : ""} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
+      data-selected={selected ? "true" : undefined}
+      data-focused={focused ? "true" : undefined}
       data-unread={row.unread ? "true" : "false"}
-      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${conversationCount ? `conversation thread with ${conversationCount} messages` : ""} ${openCommitmentCount ? `${openCommitmentCount} open ${openCommitmentCount === 1 ? "commitment" : "commitments"}` : ""} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
       onClick={onOpen}
-      onFocus={onFocusPane}
+      onFocus={() => {
+        onFocusPane();
+        onFocusRow?.();
+      }}
       onKeyDown={(event) => {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("button, [role=checkbox], [data-mailbox-control]")) {
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onOpen();
+          (onOpenWithKeyboard ?? onOpen)();
         }
       }}
       className={cn(
         "mailbox-row group relative grid min-w-0 cursor-pointer items-center gap-3 overflow-hidden border-b border-border/70 px-3 transition-colors",
         readOnly
           ? "grid-cols-[minmax(148px,220px)_1fr_auto]"
-          : "grid-cols-[28px_28px_minmax(148px,220px)_1fr_auto]",
+          : "grid-cols-[36px_32px_minmax(148px,220px)_1fr_auto]",
         "hover:bg-accent/70 hover:text-accent-foreground",
-        selected && "bg-accent text-accent-foreground hover:bg-accent",
-        focused && "bg-accent/85 text-accent-foreground ring-1 ring-ring/70 hover:bg-accent",
-        row.unread &&
-          "font-semibold text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-unread-marker",
+        row.unread
+          ? "bg-background text-foreground [&_.mailbox-row-sender]:font-semibold [&_.mailbox-row-subject]:font-semibold"
+          : "bg-muted/15 text-muted-foreground",
+        selected && "bg-primary/15 text-foreground ring-1 ring-inset ring-primary/45 hover:bg-primary/20",
+        focused && "outline outline-1 outline-inset outline-ring/80",
       )}
       style={{ height: "var(--row-height)" }}
     >
       {readOnly ? null : (
-        <>
-          <button
-            type="button"
-            onClick={toggleSelection}
-            aria-label={selected ? "Deselect message" : "Select message"}
-            className={cn(
-              "grid size-10 place-items-center rounded border border-border text-[10px] transition-opacity md:size-5 md:opacity-0 md:group-hover:opacity-100",
-              selected && "border-primary bg-primary text-primary-foreground opacity-100",
-            )}
-          >
-            {selected ? <Check className="size-3" /> : null}
-          </button>
-
-          <button
-            type="button"
-            className={cn(
-              "grid size-10 place-items-center rounded text-muted-foreground hover:bg-muted md:size-5",
-              row.starred && "text-star",
-            )}
-            onClick={(event) => {
+        <div
+          className="grid size-9 place-items-center rounded-md"
+          data-mailbox-control="selection"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Checkbox
+            checked={selected}
+            onPointerDown={(event) => {
+              selectionShiftRef.current = event.shiftKey;
               event.stopPropagation();
-              star.mutate([row.id]);
             }}
-            aria-label={row.starred ? "Unstar" : "Star"}
-          >
-            <Star className={cn("size-3.5", row.starred && "fill-current")} />
-          </button>
-        </>
+            onKeyDown={(event) => {
+              selectionShiftRef.current = event.shiftKey;
+              event.stopPropagation();
+            }}
+            onCheckedChange={() => {
+              onToggleSelection(selectionShiftRef.current);
+              selectionShiftRef.current = false;
+            }}
+            aria-label={`${selected ? "Deselect" : "Select"} message from ${row.sender}: ${subject}`}
+            className="size-4"
+          />
+        </div>
+      )}
+
+      {readOnly ? null : (
+        <button
+          type="button"
+          data-mailbox-control="star"
+          className={cn(
+            "grid size-8 place-items-center rounded text-muted-foreground hover:bg-muted",
+            row.starred && "text-star",
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            star.mutate([row.id]);
+          }}
+          aria-label={row.starred ? "Unstar" : "Star"}
+        >
+          <Star className={cn("size-3.5", row.starred && "fill-current")} />
+        </button>
       )}
 
       <div className="mailbox-row-sender flex min-w-0 items-center gap-1.5 text-[length:var(--mail-row-subject-size)]">
@@ -129,7 +158,7 @@ export function MailboxRow({
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="mailbox-row-subject truncate text-[length:var(--mail-row-subject-size)] leading-5">
-            {row.subject || "(no subject)"}
+            {subject}
           </h2>
           {row.has_attachments ? (
             <Paperclip
@@ -184,6 +213,7 @@ export function MailboxRow({
         {trailingAction ? (
           <div onClick={(event) => event.stopPropagation()}>{trailingAction}</div>
         ) : null}
+        {!readOnly && dragSource ? <MailDragHandle id={row.id} source={dragSource} /> : null}
       </div>
     </div>
   );
@@ -264,6 +294,7 @@ function QuickAction({
       type="button"
       variant="ghost"
       size="icon"
+      data-mailbox-control="quick-action"
       className="size-10 md:size-6"
       aria-label={label}
       onClick={(event) => {

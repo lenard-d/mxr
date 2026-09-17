@@ -3,11 +3,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { BulkActionBar } from "./BulkActionBar";
+import type { MailDragSource } from "./MailDndContext";
 import { MailboxRow } from "./MailboxRow";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/button";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -92,6 +92,10 @@ export function MailboxList({
     return index >= 0 ? index : rows.length > 0 ? 0 : -1;
   }, [focusedId, rows]);
   const focusedRow = focusedIndex >= 0 ? rows[focusedIndex] : undefined;
+  const selectedRows = useMemo(
+    () => rows.filter((row) => selectedIds.has(row.id)),
+    [rows, selectedIds],
+  );
 
   useEffect(() => setScope(mailboxPath), [mailboxPath, setScope]);
 
@@ -191,12 +195,29 @@ export function MailboxList({
     [focusRowAt, focusedIndex, rows.length],
   );
 
+  const dragSourceFor = useCallback(
+    (row: MessageRowView): MailDragSource => {
+      const dragRows = selectedIds.has(row.id) ? selectedRows : [row];
+      return {
+        type: "mail-row",
+        messageIds: dragRows.map((item) => item.id),
+        accountIds: [
+          ...new Set(dragRows.flatMap((item) => (item.account_id ? [item.account_id] : []))),
+        ],
+        preview: { sender: row.sender, subject: row.subject },
+      };
+    },
+    [selectedIds, selectedRows],
+  );
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (activePane !== "mailbox") return;
+      if (event.defaultPrevented) return;
       const target = event.target;
       if (target instanceof HTMLElement) {
         if (target.closest("input, textarea, select, [contenteditable=true]")) return;
+        if (target.closest("button, [role=checkbox], [data-mailbox-control]")) return;
       }
       // Read-only lists support navigation + open only; block selection
       // and message mutations.
@@ -204,7 +225,7 @@ export function MailboxList({
         const k = event.key;
         const blocked =
           ((event.metaKey || event.ctrlKey) && k.toLowerCase() === "a") ||
-          ["x", "e", "s", "m"].includes(k.toLowerCase()) ||
+          ["x", "e", "s", "m", "r", "u"].includes(k.toLowerCase()) ||
           k === "!" ||
           k === "*" ||
           k === "Delete" ||
@@ -283,6 +304,16 @@ export function MailboxList({
           }
         }
         toggle(row.id);
+      } else if (event.key === "r" || event.key === "u") {
+        clearGoPrefix();
+        event.preventDefault();
+        const ids =
+          selectedIds.size > 0
+            ? [...selectedIds]
+            : rowItems[focusedIndex]
+              ? [rowItems[focusedIndex].id]
+              : [];
+        if (ids.length > 0) (event.key === "r" ? read : unread).mutate(ids);
       } else if (event.key === "Enter" || event.key === "o") {
         clearGoPrefix();
         event.preventDefault();
@@ -406,30 +437,17 @@ export function MailboxList({
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex min-h-10 min-w-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-1">
-        <div className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+      {readOnly ? (
+        <div className="flex h-9 items-center border-b border-border px-3 font-mono text-xs text-muted-foreground">
           {rows.length} loaded
           {loadingMore ? " · loading more" : hasMore ? " · scroll for more" : ""}
-          {!readOnly && selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
         </div>
-        {readOnly ? null : (
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-10"
-              onClick={() => selectMany(rows.map((row) => row.id))}
-            >
-              Select all
-            </Button>
-            {selectedIds.size > 0 ? (
-              <Button variant="outline" size="sm" className="min-h-10" onClick={clearSelection}>
-                Clear
-              </Button>
-            ) : null}
-          </div>
-        )}
-      </div>
+      ) : (
+        <BulkActionBar
+          rows={rows}
+          loadedStatus={loadingMore ? "loading more" : hasMore ? "scroll for more" : undefined}
+        />
+      )}
       <div
         ref={parentRef}
         role="region"
@@ -462,7 +480,10 @@ export function MailboxList({
                     focused={focusedRow?.id === item.row.id}
                     onToggleSelection={(shift) => toggleRow(item.row, shift)}
                     onFocusPane={() => setActivePane("mailbox")}
+                    onFocusRow={() => setFocusedId(item.row.id)}
                     onOpen={() => openRow(item.row, "mailbox")}
+                    onOpenWithKeyboard={() => openRow(item.row, "reader")}
+                    dragSource={!readOnly ? dragSourceFor(item.row) : undefined}
                     readOnly={readOnly}
                     trailingAction={rowAction?.(item.row)}
                   />
@@ -472,7 +493,6 @@ export function MailboxList({
           })}
         </div>
       </div>
-      {readOnly ? null : <BulkActionBar />}
     </div>
   );
 }
