@@ -9,6 +9,13 @@ import type { MessageGroupView, MessageRowView } from "./types";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { EmptyState } from "@/components/EmptyState";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import {
+  getShortcutValues,
+  isShortcutSequencePrefix,
+  isShortcutSuppressed,
+  matchesShortcutSequence,
+  type ShortcutActionId,
+} from "@/lib/keybindings";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
@@ -46,6 +53,25 @@ interface FlatRow {
 }
 type FlatItem = FlatHeader | FlatRow;
 
+interface MailboxShortcutBinding {
+  id: ShortcutActionId;
+  shortcuts: string[];
+  run: (event: KeyboardEvent) => void;
+}
+
+const READ_ONLY_SHORTCUTS = new Set<ShortcutActionId>([
+  "mailbox.select",
+  "mailbox.select-all",
+  "mailbox.select-none",
+  "mailbox.archive",
+  "mailbox.star",
+  "mailbox.toggle-read",
+  "mailbox.mark-read",
+  "mailbox.mark-unread",
+  "mailbox.trash",
+  "mailbox.spam",
+]);
+
 export function MailboxList({
   groups,
   mailboxPath,
@@ -58,8 +84,8 @@ export function MailboxList({
   rowAction,
 }: MailboxListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const pendingGoTimerRef = useRef<number | null>(null);
-  const pendingStarTimerRef = useRef<number | null>(null);
+  const pendingSequenceTimerRef = useRef<number | null>(null);
+  const pendingSequenceEventsRef = useRef<KeyboardEvent[]>([]);
   const navigate = useNavigate();
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const activePane = useMailboxPane((state) => state.activePane);
@@ -80,6 +106,7 @@ export function MailboxList({
   const read = useOptimisticMailMutation("read");
   const unread = useOptimisticMailMutation("unread");
   const density = useUiPrefs((state) => state.density);
+  const keybindings = useUiPrefs((state) => state.keybindings);
 
   const flat = useMemo(() => flatten(groups), [groups]);
   const rows = useMemo(
@@ -158,17 +185,12 @@ export function MailboxList({
   useShortcutScope("mailbox", activePane === "mailbox");
   const setPendingPrefix = useKeyScope((state) => state.setPendingPrefix);
 
-  const clearGoPrefix = useCallback(() => {
-    if (pendingGoTimerRef.current === null) return;
-    window.clearTimeout(pendingGoTimerRef.current);
-    pendingGoTimerRef.current = null;
-    setPendingPrefix(null);
-  }, [setPendingPrefix]);
-
-  const clearStarPrefix = useCallback(() => {
-    if (pendingStarTimerRef.current === null) return;
-    window.clearTimeout(pendingStarTimerRef.current);
-    pendingStarTimerRef.current = null;
+  const clearPendingSequence = useCallback(() => {
+    if (pendingSequenceTimerRef.current !== null) {
+      window.clearTimeout(pendingSequenceTimerRef.current);
+      pendingSequenceTimerRef.current = null;
+    }
+    pendingSequenceEventsRef.current = [];
     setPendingPrefix(null);
   }, [setPendingPrefix]);
 
@@ -210,162 +232,192 @@ export function MailboxList({
     [selectedIds, selectedRows],
   );
 
+  const focusedOrSelectedIds = useCallback((): string[] => {
+    if (selectedIds.size > 0) return [...selectedIds];
+    const row = rows[focusedIndex];
+    return row ? [row.id] : [];
+  }, [focusedIndex, rows, selectedIds]);
+
+  const mailboxShortcuts = useMemo<MailboxShortcutBinding[]>(() => {
+    const handlers: Array<{
+      id: ShortcutActionId;
+      run: (event: KeyboardEvent) => void;
+    }> = [
+      { id: "mailbox.move-next", run: () => moveFocus(1) },
+      { id: "mailbox.move-previous", run: () => moveFocus(-1) },
+      { id: "mailbox.go-top", run: () => focusRowAt(0, "start") },
+      {
+        id: "mailbox.go-bottom",
+        run: () => focusRowAt(rows.length - 1, "end"),
+      },
+      {
+        id: "mailbox.open",
+        run: () => {
+          const row = rows[focusedIndex];
+          if (row) openRow(row, "reader");
+        },
+      },
+      {
+        id: "mailbox.select",
+        run: (event) => {
+          const row = rows[focusedIndex];
+          if (!row) return;
+          if (event.shiftKey && lastClickedId) {
+            const ordered = rows.map((item) => item.id);
+            const a = ordered.indexOf(lastClickedId);
+            const b = ordered.indexOf(row.id);
+            if (a >= 0 && b >= 0) {
+              const [start, end] = a < b ? [a, b] : [b, a];
+              selectRange(ordered.slice(start, end + 1));
+              return;
+            }
+          }
+          toggle(row.id);
+        },
+      },
+      {
+        id: "mailbox.select-all",
+        run: () => selectMany(rows.map((row) => row.id)),
+      },
+      { id: "mailbox.select-none", run: () => clearSelection() },
+      {
+        id: "mailbox.archive",
+        run: () => {
+          const ids = focusedOrSelectedIds();
+          if (ids.length > 0) archive.mutate(ids);
+        },
+      },
+      {
+        id: "mailbox.star",
+        run: () => {
+          const row = rows[focusedIndex];
+          if (row) (row.starred ? unstar : star).mutate([row.id]);
+        },
+      },
+      {
+        id: "mailbox.toggle-read",
+        run: () => {
+          const row = rows[focusedIndex];
+          if (row) (row.unread ? read : unread).mutate([row.id]);
+        },
+      },
+      {
+        id: "mailbox.mark-read",
+        run: () => {
+          const ids = focusedOrSelectedIds();
+          if (ids.length > 0) read.mutate(ids);
+        },
+      },
+      {
+        id: "mailbox.mark-unread",
+        run: () => {
+          const ids = focusedOrSelectedIds();
+          if (ids.length > 0) unread.mutate(ids);
+        },
+      },
+      {
+        id: "mailbox.trash",
+        run: () => {
+          const ids = focusedOrSelectedIds();
+          if (ids.length > 0) trash.mutate(ids);
+        },
+      },
+      {
+        id: "mailbox.spam",
+        run: () => {
+          const ids = focusedOrSelectedIds();
+          if (ids.length > 0) spam.mutate(ids);
+        },
+      },
+      { id: "mailbox.focus-sidebar", run: () => setActivePane("sidebar") },
+    ];
+
+    return handlers
+      .filter(({ id }) => !readOnly || !READ_ONLY_SHORTCUTS.has(id))
+      .map(({ id, run }) => ({ id, shortcuts: getShortcutValues(id, keybindings), run }));
+  }, [
+    archive,
+    clearSelection,
+    focusRowAt,
+    focusedIndex,
+    focusedOrSelectedIds,
+    keybindings,
+    lastClickedId,
+    moveFocus,
+    openRow,
+    read,
+    readOnly,
+    rows,
+    selectMany,
+    selectRange,
+    setActivePane,
+    spam,
+    star,
+    toggle,
+    trash,
+    unread,
+    unstar,
+  ]);
+
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
+    function schedulePendingSequence(): void {
+      if (pendingSequenceTimerRef.current !== null) {
+        window.clearTimeout(pendingSequenceTimerRef.current);
+      }
+      pendingSequenceTimerRef.current = window.setTimeout(clearPendingSequence, 1500);
+    }
+
+    function handleResolution(
+      event: KeyboardEvent,
+      events: KeyboardEvent[],
+      resolution: ShortcutResolution,
+    ): boolean {
+      if (resolution.kind === "prefix") {
+        pendingSequenceEventsRef.current = events;
+        setPendingPrefix(events.map((item) => item.key).join(""));
+        schedulePendingSequence();
+        if (events.length > 1 || event.key === "*") event.preventDefault();
+        return true;
+      }
+      if (resolution.kind !== "match") return false;
+      event.preventDefault();
+      clearPendingSequence();
+      resolution.binding.run(event);
+      return true;
+    }
+
+    function onKeyDown(event: KeyboardEvent): void {
       if (activePane !== "mailbox") return;
-      if (event.defaultPrevented) return;
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        if (target.closest("input, textarea, select, [contenteditable=true]")) return;
-        if (target.closest("button, [role=checkbox], [data-mailbox-control]")) return;
-      }
-      // Read-only lists support navigation + open only; block selection
-      // and message mutations.
-      if (readOnly) {
-        const k = event.key;
-        const blocked =
-          ((event.metaKey || event.ctrlKey) && k.toLowerCase() === "a") ||
-          ["x", "e", "s", "m", "r", "u"].includes(k.toLowerCase()) ||
-          k === "!" ||
-          k === "*" ||
-          k === "Delete" ||
-          k === "Backspace";
-        if (blocked) return;
-      }
-      const rowItems = rows;
-      // Gmail-style * sequences: *a select all, *n select none.
-      if (pendingStarTimerRef.current !== null) {
-        clearStarPrefix();
-        if (event.key === "a") {
-          event.preventDefault();
-          selectMany(rowItems.map((row) => row.id));
-          return;
-        }
-        if (event.key === "n") {
-          event.preventDefault();
-          clearSelection();
-          return;
-        }
-      }
-      if (event.key === "*") {
-        event.preventDefault();
-        clearGoPrefix();
-        pendingStarTimerRef.current = window.setTimeout(() => {
-          pendingStarTimerRef.current = null;
-          setPendingPrefix(null);
-        }, 1500);
-        setPendingPrefix("*");
+      if (event.defaultPrevented) {
+        clearPendingSequence();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
-        event.preventDefault();
-        selectMany(rowItems.map((row) => row.id));
-      } else if (event.key === "G") {
-        event.preventDefault();
-        clearGoPrefix();
-        focusRowAt(rowItems.length - 1, "end");
-      } else if (event.key === "g") {
-        if (pendingGoTimerRef.current !== null) {
-          event.preventDefault();
-          clearGoPrefix();
-          focusRowAt(0, "start");
+      if (isShortcutSuppressed(event)) {
+        clearPendingSequence();
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("button, [role=checkbox], [data-mailbox-control]")
+      ) {
+        clearPendingSequence();
+        return;
+      }
+
+      const pending = pendingSequenceEventsRef.current;
+      const events = [...pending, event];
+      if (handleResolution(event, events, resolveMailboxShortcut(events, mailboxShortcuts))) return;
+
+      if (pending.length > 0) {
+        clearPendingSequence();
+        if (handleResolution(event, [event], resolveMailboxShortcut([event], mailboxShortcuts))) {
           return;
         }
-        pendingGoTimerRef.current = window.setTimeout(() => {
-          pendingGoTimerRef.current = null;
-          setPendingPrefix(null);
-        }, 800);
-        setPendingPrefix("g");
-      } else if (event.key === "j") {
-        clearGoPrefix();
-        event.preventDefault();
-        moveFocus(1);
-      } else if (event.key === "k") {
-        clearGoPrefix();
-        event.preventDefault();
-        moveFocus(-1);
-      } else if (event.key === "h" || event.key === "ArrowLeft") {
-        clearGoPrefix();
-        event.preventDefault();
-        setActivePane("sidebar");
-      } else if (event.key.toLowerCase() === "x") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (!row) return;
-        if (event.shiftKey && lastClickedId) {
-          const ordered = rowItems.map((item) => item.id);
-          const a = ordered.indexOf(lastClickedId);
-          const b = ordered.indexOf(row.id);
-          if (a >= 0 && b >= 0) {
-            const [start, end] = a < b ? [a, b] : [b, a];
-            selectRange(ordered.slice(start, end + 1));
-            return;
-          }
-        }
-        toggle(row.id);
-      } else if (["r", "R", "u", "U"].includes(event.key)) {
-        clearGoPrefix();
-        event.preventDefault();
-        const ids =
-          selectedIds.size > 0
-            ? [...selectedIds]
-            : rowItems[focusedIndex]
-              ? [rowItems[focusedIndex].id]
-              : [];
-        if (ids.length > 0) (event.key.toLowerCase() === "r" ? read : unread).mutate(ids);
-      } else if (event.key === "Enter" || event.key === "o") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) openRow(row, "reader");
-      } else if (event.key === "l" || event.key === "ArrowRight") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) openRow(row, "reader");
-      } else if (event.key === "e") {
-        clearGoPrefix();
-        event.preventDefault();
-        const ids =
-          selectedIds.size > 0
-            ? [...selectedIds]
-            : rowItems[focusedIndex]
-              ? [rowItems[focusedIndex].id]
-              : [];
-        if (ids.length > 0) archive.mutate(ids);
-      } else if (event.key === "!") {
-        clearGoPrefix();
-        event.preventDefault();
-        const ids =
-          selectedIds.size > 0
-            ? [...selectedIds]
-            : rowItems[focusedIndex]
-              ? [rowItems[focusedIndex].id]
-              : [];
-        if (ids.length > 0) spam.mutate(ids);
-      } else if (["#", "Delete", "Backspace"].includes(event.key)) {
-        clearGoPrefix();
-        event.preventDefault();
-        const ids =
-          selectedIds.size > 0
-            ? [...selectedIds]
-            : rowItems[focusedIndex]
-              ? [rowItems[focusedIndex].id]
-              : [];
-        if (ids.length > 0) trash.mutate(ids);
-      } else if (event.key === "s") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) (row.starred ? unstar : star).mutate([row.id]);
-      } else if (event.key === "m") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) (row.unread ? read : unread).mutate([row.id]);
-      } else if (event.key === "Escape") {
-        clearGoPrefix();
+      }
+
+      if (event.key === "Escape") {
+        clearPendingSequence();
         event.preventDefault();
         if (selectedIds.size > 0) {
           clearSelection();
@@ -374,41 +426,22 @@ export function MailboxList({
         }
       }
     }
+
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      clearGoPrefix();
-      clearStarPrefix();
+      clearPendingSequence();
     };
   }, [
     activePane,
     activeThreadId,
-    archive,
-    clearGoPrefix,
-    clearStarPrefix,
-    setPendingPrefix,
+    clearPendingSequence,
     clearSelection,
-    focusRowAt,
-    focusedIndex,
-    lastClickedId,
     mailboxPath,
-    moveFocus,
+    mailboxShortcuts,
     navigate,
-    openRow,
-    previewOnFocus,
-    read,
-    readOnly,
-    rows,
-    selectMany,
-    selectRange,
     selectedIds,
-    setActivePane,
-    spam,
-    star,
-    toggle,
-    trash,
-    unread,
-    unstar,
+    setPendingPrefix,
   ]);
 
   if (rows.length === 0) {
@@ -486,6 +519,26 @@ export function MailboxList({
       </div>
     </div>
   );
+}
+
+type ShortcutResolution =
+  | { kind: "none" }
+  | { kind: "prefix" }
+  | { kind: "match"; binding: MailboxShortcutBinding };
+
+function resolveMailboxShortcut(
+  events: readonly KeyboardEvent[],
+  bindings: readonly MailboxShortcutBinding[],
+): ShortcutResolution {
+  const match = bindings.find((binding) =>
+    binding.shortcuts.some((shortcut) => matchesShortcutSequence(events, shortcut)),
+  );
+  const hasLongerPrefix = bindings.some((binding) =>
+    binding.shortcuts.some((shortcut) => isShortcutSequencePrefix(events, shortcut)),
+  );
+  if (match && !hasLongerPrefix) return { kind: "match", binding: match };
+  if (hasLongerPrefix) return { kind: "prefix" };
+  return { kind: "none" };
 }
 
 function flatten(groups: MessageGroupView[]): FlatItem[] {

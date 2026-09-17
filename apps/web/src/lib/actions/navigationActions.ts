@@ -43,6 +43,7 @@ export const navigationActions: Action[] = [
     description: "Open the command palette",
     group: "Navigate",
     shortcut: "$mod+KeyK",
+    aliases: ["Shift+Semicolon"],
     run: () => useModals.getState().setCommandPaletteOpen(true),
   },
   {

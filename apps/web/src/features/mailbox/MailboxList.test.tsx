@@ -6,8 +6,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MailboxList } from "./MailboxList";
 import { MailboxRow } from "./MailboxRow";
 import type { MessageGroupView, MessageRowView } from "./types";
+import { defaultShortcutPreferences } from "@/lib/keybindings";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -53,6 +55,7 @@ describe("MailboxList keyboard selection", () => {
       suppressNextReaderFocus: false,
     });
     useSelection.setState({ scope: null, ids: new Set(), lastClickedId: null });
+    useUiPrefs.setState({ keybindings: defaultShortcutPreferences() });
   });
 
   afterEach(() => {
@@ -236,6 +239,26 @@ describe("MailboxList keyboard selection", () => {
     expect(mutation.mutate).toHaveBeenCalledWith(["msg-1"]);
   });
 
+  test("uses persisted mailbox shortcuts for movement, mutation, and focus", async () => {
+    useUiPrefs.setState({
+      keybindings: {
+        ...defaultShortcutPreferences(),
+        "mailbox.move-next": "n",
+        "mailbox.archive": "q",
+        "mailbox.focus-sidebar": "b",
+      },
+    });
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+
+    await screen.findByRole("checkbox", { name: /select all messages in view/i });
+    fireEvent.keyDown(window, { key: "n" });
+    fireEvent.keyDown(window, { key: "q" });
+    expect(mutation.mutate).toHaveBeenCalledWith(["msg-2"]);
+
+    fireEvent.keyDown(window, { key: "b" });
+    expect(useMailboxPane.getState().activePane).toBe("sidebar");
+  });
+
   test("supports explicit uppercase read/unread and Gmail-style trash shortcuts", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
     await screen.findByRole("checkbox", { name: /select all messages in view/i });
@@ -338,6 +361,7 @@ describe("MailboxList readOnly mode", () => {
       suppressNextReaderFocus: false,
     });
     useSelection.setState({ scope: null, ids: new Set(), lastClickedId: null });
+    useUiPrefs.setState({ keybindings: defaultShortcutPreferences() });
   });
 
   afterEach(() => {

@@ -13,6 +13,7 @@ import {
   defaultToastPreferences,
   useUiPrefs,
 } from "./uiPrefsStore";
+import { defaultShortcutPreferences } from "@/lib/keybindings";
 
 describe("toast preferences", () => {
   beforeEach(() => {
@@ -22,6 +23,7 @@ describe("toast preferences", () => {
       threadSplitRatio: DEFAULT_THREAD_SPLIT_RATIO,
       sidebarVisibility: { ...defaultSidebarVisibility },
       toastPreferences: { ...defaultToastPreferences },
+      keybindings: defaultShortcutPreferences(),
     });
   });
 
@@ -49,6 +51,28 @@ describe("toast preferences", () => {
       ...defaultToastPreferences,
       errors: false,
     });
+  });
+
+  test("rehydrates shortcut overrides but rejects malformed or colliding values", async () => {
+    window.localStorage.setItem(
+      "mxr.uiPrefs",
+      JSON.stringify({
+        state: {
+          keybindings: {
+            "mailbox.move-next": "not-a-key",
+            "mailbox.archive": "j",
+            "shell.compose": "g i",
+          },
+        },
+        version: 2,
+      }),
+    );
+
+    await useUiPrefs.persist.rehydrate();
+
+    expect(useUiPrefs.getState().keybindings["mailbox.move-next"]).toBe("j");
+    expect(useUiPrefs.getState().keybindings["mailbox.archive"]).toBe("e");
+    expect(useUiPrefs.getState().keybindings["shell.compose"]).toBe("KeyC");
   });
 });
 

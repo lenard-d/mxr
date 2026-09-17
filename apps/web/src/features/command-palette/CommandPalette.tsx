@@ -32,7 +32,9 @@ import {
   type Action,
   type ActionGroup,
 } from "@/lib/actions";
+import { getEffectiveShortcut } from "@/lib/keybindings";
 import { useModals } from "@/state/modalStore";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const GROUP_ORDER: ActionGroup[] = [
   "Compose",
@@ -71,6 +73,7 @@ export function CommandPaletteMount() {
 
   const ctx = useActionContext({ accountCount: accounts.data?.accounts.length ?? 0 });
   const grouped = useActionsByGroup(ctx);
+  const keybindings = useUiPrefs((state) => state.keybindings);
 
   const semanticInstall = useMutation({
     mutationFn: installSemanticProfile,
@@ -118,8 +121,10 @@ export function CommandPaletteMount() {
                       <div className="text-2xs text-muted-foreground">{action.description}</div>
                     ) : null}
                   </div>
-                  {action.shortcut ? (
-                    <CommandShortcut>{formatChord(action.shortcut)}</CommandShortcut>
+                  {getEffectiveShortcut(action, keybindings) ? (
+                    <CommandShortcut>
+                      {formatChord(getEffectiveShortcut(action, keybindings) ?? "")}
+                    </CommandShortcut>
                   ) : null}
                 </CommandItem>
               ))}

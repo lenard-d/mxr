@@ -7,6 +7,14 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
+import {
+  defaultShortcutPreferences,
+  sanitizeShortcutPreferences,
+  validateShortcutValue,
+  type ShortcutActionId,
+  type ShortcutPreferences,
+} from "@/lib/keybindings";
+
 export type Theme = "midnight" | "light" | "eclipse" | "paper" | "system";
 export type ResolvedTheme = Exclude<Theme, "system">;
 export type Density = "compact" | "regular" | "comfortable";
@@ -120,6 +128,7 @@ export interface UiPrefsState {
   vipAllowlist: string[];
   undoSendSeconds: UndoSendSeconds;
   toastPreferences: ToastPreferences;
+  keybindings: ShortcutPreferences;
   setUndoSendSeconds: (seconds: UndoSendSeconds) => void;
   setTheme: (t: Theme) => void;
   setDensity: (d: Density) => void;
@@ -135,6 +144,9 @@ export interface UiPrefsState {
   addVip: (pattern: string) => void;
   removeVip: (pattern: string) => void;
   setToastPreference: (category: ToastCategory, enabled: boolean) => void;
+  setShortcut: (actionId: ShortcutActionId, shortcut: string) => void;
+  resetShortcut: (actionId: ShortcutActionId) => void;
+  resetShortcuts: () => void;
 }
 
 type PersistedUiPrefs = Pick<
@@ -153,6 +165,7 @@ type PersistedUiPrefs = Pick<
   | "vipAllowlist"
   | "undoSendSeconds"
   | "toastPreferences"
+  | "keybindings"
 >;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,12 +244,15 @@ function sanitizePersistedPrefs(value: unknown): Partial<PersistedUiPrefs> {
     }
     sanitized.toastPreferences = toastPreferences;
   }
+  if (isRecord(record.keybindings)) {
+    sanitized.keybindings = sanitizeShortcutPreferences(record.keybindings);
+  }
   return sanitized;
 }
 
 export const useUiPrefs = create<UiPrefsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       theme: "midnight",
       density: "regular",
       sidebarCollapsed: false,
@@ -251,6 +267,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       vipAllowlist: [],
       undoSendSeconds: 10,
       toastPreferences: { ...defaultToastPreferences },
+      keybindings: defaultShortcutPreferences(),
       setUndoSendSeconds: (undoSendSeconds) => set({ undoSendSeconds }),
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
@@ -279,6 +296,21 @@ export const useUiPrefs = create<UiPrefsState>()(
         set((state) => ({
           toastPreferences: { ...state.toastPreferences, [category]: enabled },
         })),
+      setShortcut: (actionId, shortcut) => {
+        const validation = validateShortcutValue(actionId, shortcut, get().keybindings);
+        if (!validation.valid) return;
+        set((state) => ({
+          keybindings: { ...state.keybindings, [actionId]: validation.value },
+        }));
+      },
+      resetShortcut: (actionId) =>
+        set((state) => ({
+          keybindings: {
+            ...state.keybindings,
+            [actionId]: defaultShortcutPreferences()[actionId],
+          },
+        })),
+      resetShortcuts: () => set({ keybindings: defaultShortcutPreferences() }),
     }),
     {
       name: "mxr.uiPrefs",

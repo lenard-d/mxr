@@ -18,6 +18,7 @@ import { SearchPalette } from "@/features/search/SearchPalette";
 import { fetchAccounts } from "@/features/accounts/api";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
 import { useKeybindings } from "@/hooks/useKeybindings";
+import { DEFAULT_SHORTCUT_PREFERENCES } from "@/lib/keybindings";
 import { buildGlobalKeymap } from "@/lib/keymap";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
@@ -33,6 +34,7 @@ export function AppShell() {
   const helpOpen = useModals((s) => s.helpOpen);
   const setHelpOpen = useModals((s) => s.setHelpOpen);
   const activePane = useMailboxPane((s) => s.activePane);
+  const keybindings = useUiPrefs((s) => s.keybindings);
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
   useNewMessageNotifier();
@@ -43,8 +45,8 @@ export function AppShell() {
     staleTime: 60_000,
   });
   const keymap = useMemo(
-    () => buildGlobalKeymap({ navigate: (to) => navigate({ to }) }),
-    [navigate],
+    () => buildGlobalKeymap({ navigate: (to) => navigate({ to }) }, keybindings),
+    [keybindings, navigate],
   );
   useKeybindings(keymap, { disabled: path.startsWith("/compose") });
 
@@ -59,13 +61,19 @@ export function AppShell() {
   useEffect(() => {
     if (path !== "/m/archive") return;
     if (typeof window === "undefined") return;
+    if (
+      keybindings["nav.archive"] !== DEFAULT_SHORTCUT_PREFERENCES["nav.archive"] ||
+      keybindings["nav.analytics"] !== DEFAULT_SHORTCUT_PREFERENCES["nav.analytics"]
+    ) {
+      return;
+    }
     if (window.localStorage.getItem(G_A_MIGRATION_KEY)) return;
     toast.info("`g a` now opens All Mail. Analytics moved to `g y`. Press ? for the full list.", {
       duration: 8000,
       onDismiss: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
       onAutoClose: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
     });
-  }, [path]);
+  }, [keybindings, path]);
 
   useEffect(() => {
     if (path !== "/onboarding" && accounts.data?.accounts.length === 0) {

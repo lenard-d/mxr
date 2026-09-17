@@ -46,6 +46,7 @@ import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import type { SidebarItem } from "@/features/mailbox/types";
 import { buildMailMailboxPath, parseMailLocation } from "@/features/mailbox/location";
 import { cn } from "@/lib/utils";
+import { isShortcutSuppressed } from "@/lib/keybindings";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import {
   DEFAULT_SIDEBAR_WIDTH,
@@ -210,8 +211,8 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (activePane !== "sidebar") return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
+      if (event.defaultPrevented) return;
+      if (isShortcutSuppressed(event)) return;
       if (event.key === "j" || event.key === "ArrowDown") {
         event.preventDefault();
         setSidebarIndex(Math.min(navigationItems.length - 1, sidebarIndex + 1));

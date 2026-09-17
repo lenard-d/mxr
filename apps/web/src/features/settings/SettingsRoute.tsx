@@ -17,7 +17,6 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { KeyChip } from "@/components/KeyChip";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +35,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/api/client";
 import { fetchAccounts, setDefaultAccount } from "@/features/accounts/api";
 import { TokenSection } from "@/features/settings/TokenSection";
-import { useActionShortcutSections } from "@/lib/actions";
+import { getRegistry } from "@/lib/actions";
+import {
+  CONFIGURABLE_SHORTCUT_DEFINITIONS,
+  DEFAULT_SHORTCUT_PREFERENCES,
+  formatShortcutForDisplay,
+  isShortcutActionId,
+  validateShortcutValue,
+  type ShortcutActionId,
+  type ShortcutPreferences,
+} from "@/lib/keybindings";
 import {
   useUiPrefs,
   sidebarFeatureOptions,
@@ -1188,45 +1196,153 @@ function setSignatureDefault(input: { name: string; kind: "new" | "reply" }) {
   });
 }
 
-function KeybindingsSection() {
-  const hintSections = useActionShortcutSections({
-    path: "/settings/keybindings",
-    activePane: "mailbox",
-    selectionCount: 0,
-    accountCount: 0,
-    hasFocusedThread: false,
-    hasFocusedMessage: false,
-    isFirstAccountOnly: false,
-  });
+export function KeybindingsSection() {
+  const keybindings = useUiPrefs((state) => state.keybindings);
+  const setShortcut = useUiPrefs((state) => state.setShortcut);
+  const resetShortcut = useUiPrefs((state) => state.resetShortcut);
+  const resetShortcuts = useUiPrefs((state) => state.resetShortcuts);
+  const globalDefinitions = getRegistry()
+    .all()
+    .filter(
+      (action) =>
+        !action.paletteOnly &&
+        !action.displayOnly &&
+        (action.scope ?? "global") === "global" &&
+        action.shortcut !== undefined &&
+        isShortcutActionId(action.id),
+    );
+  const mailboxDefinitions = CONFIGURABLE_SHORTCUT_DEFINITIONS.filter(
+    (definition) => definition.scope === "mailbox",
+  );
+
   return (
     <Shell title="Keybindings">
       <div className="space-y-4">
-        {hintSections.length === 0 ? (
-          <div className="text-xs text-muted-foreground">No keybindings registered.</div>
-        ) : (
-          hintSections.map((section) => (
-            <div key={section.title}>
-              <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {section.title}
-              </h3>
-              <div className="grid gap-2">
-                {section.hints.map((hint) => (
-                  <div
-                    key={`${section.title}-${hint.key}-${hint.label}`}
-                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs"
-                  >
-                    <span>{hint.label}</span>
-                    <KeyChip>{hint.key}</KeyChip>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
+        <Card className="space-y-3 p-4">
+          <div>
+            <h2 className="text-sm font-semibold">Global shortcuts</h2>
+            <p className="text-xs text-muted-foreground">
+              These work across mxr. Secondary aliases remain available while an action is enabled. Leave
+              a field blank to disable that action.
+            </p>
+          </div>
+          <div className="grid gap-2">
+            {globalDefinitions.map((action) => {
+              if (!isShortcutActionId(action.id)) return null;
+              return (
+                <ShortcutEditor
+                  key={action.id}
+                  actionId={action.id}
+                  label={action.label}
+                  value={keybindings[action.id]}
+                  preferences={keybindings}
+                  onChange={setShortcut}
+                  onReset={resetShortcut}
+                />
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card className="space-y-3 p-4">
+          <div>
+            <h2 className="text-sm font-semibold">Mailbox shortcuts</h2>
+            <p className="text-xs text-muted-foreground">
+              Gmail-style controls for the focused message list. Separate sequence keys with spaces
+              (for example <code className="font-mono">g g</code> or{" "}
+              <code className="font-mono">* a</code>).
+            </p>
+          </div>
+          <div className="grid gap-2">
+            {mailboxDefinitions.map((definition) => (
+              <ShortcutEditor
+                key={definition.id}
+                actionId={definition.id}
+                label={definition.label}
+                value={keybindings[definition.id]}
+                preferences={keybindings}
+                onChange={setShortcut}
+                onReset={resetShortcut}
+              />
+            ))}
+          </div>
+        </Card>
+
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={resetShortcuts}>
+            Reset all to defaults
+          </Button>
+        </div>
       </div>
     </Shell>
   );
 }
+
+function ShortcutEditor({
+  actionId,
+  label,
+  value,
+  preferences,
+  onChange,
+  onReset,
+}: {
+  actionId: ShortcutActionId;
+  label: string;
+  value: string | null;
+  preferences: ShortcutPreferences;
+  onChange: (actionId: ShortcutActionId, shortcut: string) => void;
+  onReset: (actionId: ShortcutActionId) => void;
+}) {
+  const [draft, setDraft] = useState(value ?? "");
+  useEffect(() => setDraft(value ?? ""), [value]);
+  const validation = validateShortcutValue(actionId, draft, preferences);
+  const defaultValue = DEFAULT_SHORTCUT_PREFERENCES[actionId];
+  const displayValue = validation.valid
+    ? formatShortcutForDisplay(validation.value)
+    : "Invalid shortcut";
+
+  return (
+    <div className="grid gap-2 rounded-md border border-border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:items-center">
+      <div className="min-w-0">
+        <Label htmlFor={`shortcut-${actionId}`} className="text-xs font-medium">
+          {label}
+        </Label>
+        <div className="mt-0.5 font-mono text-2xs text-muted-foreground">{actionId}</div>
+      </div>
+      <div className="space-y-1">
+        <Input
+          id={`shortcut-${actionId}`}
+          aria-label={`${label} shortcut`}
+          aria-invalid={!validation.valid}
+          value={draft}
+          onChange={(event) => {
+            const next = event.target.value;
+            setDraft(next);
+            const nextValidation = validateShortcutValue(actionId, next, preferences);
+            if (nextValidation.valid) onChange(actionId, next);
+          }}
+          placeholder="Disabled"
+          className={!validation.valid ? "border-destructive" : undefined}
+        />
+        <div className="font-mono text-2xs text-muted-foreground">{displayValue}</div>
+        {!validation.valid ? (
+          <p role="alert" className="text-2xs text-destructive">
+            {validation.error}
+          </p>
+        ) : null}
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onReset(actionId)}
+        disabled={value === defaultValue && draft === defaultValue}
+      >
+        Reset
+      </Button>
+    </div>
+  );
+}
+
 
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
