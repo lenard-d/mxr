@@ -15,6 +15,7 @@ import {
   type ShortcutSection,
   useActionShortcutSections,
 } from "@/lib/actions";
+import { hasMailThread } from "@/features/mailbox/location";
 import type { MailPane } from "@/state/mailboxPaneStore";
 
 interface HelpDialogProps {
@@ -43,8 +44,8 @@ export function HelpDialog({
       activePane,
       selectionCount: 0,
       accountCount,
-      hasFocusedThread: /^\/m\/[^/]+\/[^/]+/.test(path),
-      hasFocusedMessage: /^\/m\/[^/]+\/[^/]+\/[^/]+/.test(path),
+      hasFocusedThread: hasMailThread(path),
+      hasFocusedMessage: false,
       isFirstAccountOnly: accountCount === 1,
     }),
     [path, activePane, accountCount],

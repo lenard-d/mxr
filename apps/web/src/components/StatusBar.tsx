@@ -14,6 +14,7 @@ import { useConnectionStore } from "@/state/connectionStore";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
+import { hasMailThread } from "@/features/mailbox/location";
 
 export function StatusBar() {
   const sync = useConnectionStore((s) => s.syncProgress);
@@ -31,8 +32,8 @@ export function StatusBar() {
       activePane,
       selectionCount: 0,
       accountCount: 0,
-      hasFocusedThread: /^\/m\/[^/]+\/[^/]+/.test(path),
-      hasFocusedMessage: /^\/m\/[^/]+\/[^/]+\/[^/]+/.test(path),
+      hasFocusedThread: hasMailThread(path),
+      hasFocusedMessage: false,
       isFirstAccountOnly: false,
     }),
     [path, activePane],

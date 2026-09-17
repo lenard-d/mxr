@@ -1,4 +1,4 @@
-import { useRouterState } from "@tanstack/react-router";
+import { useRouterState, useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 
@@ -7,16 +7,19 @@ import { SyncProgressBanner } from "./SyncProgressBanner";
 import { useMailboxQuery } from "./useMailboxQuery";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import {
+  accountKeyFor,
+  buildMailInboxPath,
+  mailboxPathFromLocation,
+  parseMailLocation,
+  type MailAccountResolution,
+} from "@/features/mailbox/location";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 
 export function MailboxRoute() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const routeParts = pathname.split("/").filter(Boolean);
-  const activeThreadId =
-    routeParts[0] === "m" && routeParts[1] && routeParts[2] && routeParts[1] !== "label"
-      ? routeParts[2]
-      : undefined;
-  const mailboxPath = activeThreadId ? `/m/${routeParts[1]}` : pathname;
+  const location = parseMailLocation(pathname);
+  const activeThreadId = location?.threadId;
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
   const mailbox = useMailboxQuery();
@@ -25,7 +28,23 @@ export function MailboxRoute() {
     if (!activeThreadId && activePane === "reader") setActivePane("mailbox");
   }, [activePane, activeThreadId, setActivePane]);
 
-  if (mailbox.isLoading) {
+  if (mailbox.accountQuery.isError) {
+    return (
+      <EmptyState
+        role="alert"
+        icon={RefreshCw}
+        title="Accounts unavailable"
+        description={mailbox.accountQuery.error.message}
+        action={<Button onClick={() => mailbox.accountQuery.refetch()}>Retry</Button>}
+      />
+    );
+  }
+
+  if (mailbox.accountResolution.status === "invalid" || mailbox.accountResolution.status === "disabled") {
+    return <AccountUnavailable resolution={mailbox.accountResolution} />;
+  }
+
+  if (mailbox.isLoading || mailbox.accountResolution.status === "loading") {
     return (
       <div className="flex flex-1 flex-col border-r border-border">
         <MailboxHeader title="Loading" subtitle="Opening local mailbox" />
@@ -50,7 +69,13 @@ export function MailboxRoute() {
   }
 
   const data = mailbox.data;
-  if (!data) return null;
+  if (!data || !location) return null;
+  const accountKey =
+    mailbox.accountResolution.status === "resolved"
+      ? mailbox.accountResolution.accountKey
+      : location.accountKey ?? "all";
+  const mailboxPath = mailboxPathFromLocation(location, accountKey);
+
   return (
     <div className="flex min-w-0 flex-1 flex-col border-r border-border bg-background">
       <SyncProgressBanner />
@@ -70,6 +95,33 @@ export function MailboxRoute() {
         }}
       />
     </div>
+  );
+}
+
+function AccountUnavailable({ resolution }: { resolution: Extract<MailAccountResolution, { status: "invalid" | "disabled" }> }) {
+  const navigate = useNavigate();
+  const fallback = resolution.fallback;
+  const title = resolution.status === "disabled" ? "Account disabled" : "Account not found";
+  const detail =
+    resolution.status === "disabled"
+      ? `${resolution.account.name || resolution.account.email} is disabled.`
+      : `No enabled account matches “${resolution.accountKey}”.`;
+  return (
+    <EmptyState
+      role="alert"
+      icon={RefreshCw}
+      title={title}
+      description={detail}
+      action={
+        fallback ? (
+          <Button onClick={() => void navigate({ to: buildMailInboxPath(accountKeyFor(fallback)) })}>
+            Open {fallback.name || fallback.email}
+          </Button>
+        ) : (
+          <Button onClick={() => void navigate({ to: "/accounts" })}>Open accounts</Button>
+        )
+      }
+    />
   );
 }
 

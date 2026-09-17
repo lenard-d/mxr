@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import type { SidebarItem } from "@/features/mailbox/types";
+import { buildMailMailboxPath, parseMailLocation } from "@/features/mailbox/location";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -86,6 +87,7 @@ export function Sidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const shell = useShellQuery();
   const dynamicSections = shell.data?.sidebar?.sections;
+  const accountKey = parseMailLocation(path)?.accountKey ?? "all";
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
   const sidebarIndex = useMailboxPane((state) => state.sidebarIndex);
@@ -96,19 +98,19 @@ export function Sidebar() {
         ? dynamicSections.map((section) => ({
             label: section.title,
             items: section.items.map((item) => ({
-              to: sidebarItemPath(item),
+              to: sidebarItemPath(item, accountKey),
               label: item.label,
               Icon: iconForSidebarItem(item),
               badge: item.unread && item.unread > 0 ? item.unread : undefined,
             })),
           }))
-        : [{ label: "Lenses", items: fallbackLenses }];
+        : [{ label: "Lenses", items: scopedMailItems(fallbackLenses, accountKey) }];
     return [
-      { label: "Workspace", items: primary },
+      { label: "Workspace", items: scopedMailItems(primary, accountKey) },
       ...lensSections,
       { label: "System", items: systemItems },
     ];
-  }, [dynamicSections]);
+  }, [accountKey, dynamicSections]);
   const navigationItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);
 
   useEffect(() => {
@@ -301,15 +303,36 @@ function isItemActive(path: string, to: string): boolean {
   return path === to || path.startsWith(`${to}/`);
 }
 
-function sidebarItemPath(item: SidebarItem): string {
+function scopedMailItems(items: NavItem[], accountKey: string): NavItem[] {
+  return items.map((item) => {
+    if (!item.to.startsWith("/m/")) return item;
+    const mailbox = item.to.slice("/m/".length);
+    const lens = mailbox === "inbox" ? { kind: "inbox" as const } : mailbox === "archive" ? { kind: "archive" as const } : { kind: "label" as const, labelId: mailbox };
+    return { ...item, to: buildMailMailboxPath({ accountKey, lens }) };
+  });
+}
+
+function sidebarItemPath(item: SidebarItem, accountKey: string): string {
   const lens = item.lens;
-  if (!lens) return "/m/inbox";
-  if (lens.kind === "inbox") return "/m/inbox";
-  if (lens.kind === "all_mail") return "/m/archive";
-  if (lens.kind === "saved_search") return `/m/saved/${item.id.replace(/^saved-search-/, "")}`;
-  if (lens.kind === "label") return `/m/label/${item.id}`;
-  if (lens.kind === "subscription") return `/m/label/${item.id}`;
-  return "/m/inbox";
+  if (!lens || lens.kind === "inbox") {
+    return buildMailMailboxPath({ accountKey, lens: { kind: "inbox" } });
+  }
+  if (lens.kind === "all_mail") {
+    return buildMailMailboxPath({ accountKey, lens: { kind: "archive" } });
+  }
+  if (lens.kind === "saved_search") {
+    return buildMailMailboxPath({
+      accountKey,
+      lens: { kind: "saved", slug: item.id.replace(/^saved-search-/, "") },
+    });
+  }
+  if (lens.kind === "label") {
+    return buildMailMailboxPath({ accountKey, lens: { kind: "label", labelId: lens.labelId ?? item.id } });
+  }
+  if (lens.kind === "subscription") {
+    return buildMailMailboxPath({ accountKey, lens: { kind: "label", labelId: item.id } });
+  }
+  return buildMailMailboxPath({ accountKey, lens: { kind: "inbox" } });
 }
 
 function iconForSidebarItem(item: SidebarItem): NavItem["Icon"] {

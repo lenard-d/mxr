@@ -36,6 +36,14 @@ import { Route as AccountsKeyRouteImport } from './routes/accounts.$key'
 import { Route as MSavedSlugRouteImport } from './routes/m.saved.$slug'
 import { Route as MLabelNameRouteImport } from './routes/m.label.$name'
 import { Route as MMailboxThreadIdRouteImport } from './routes/m.$mailbox.$threadId'
+import { Route as MailInboxRouteImport } from './routes/mail.$accountKey.inbox'
+import { Route as MailInboxThreadRouteImport } from './routes/mail.$accountKey.inbox.thread.$threadId'
+import { Route as MailArchiveRouteImport } from './routes/mail.$accountKey.archive'
+import { Route as MailArchiveThreadRouteImport } from './routes/mail.$accountKey.archive.thread.$threadId'
+import { Route as MailLabelRouteImport } from './routes/mail.$accountKey.label.$labelId'
+import { Route as MailLabelThreadRouteImport } from './routes/mail.$accountKey.label.$labelId.thread.$threadId'
+import { Route as MailSavedRouteImport } from './routes/mail.$accountKey.saved.$slug'
+import { Route as MailSavedThreadRouteImport } from './routes/mail.$accountKey.saved.$slug.thread.$threadId'
 
 const SubscriptionsRoute = SubscriptionsRouteImport.update({
   id: '/subscriptions',
@@ -172,6 +180,46 @@ const MMailboxThreadIdRoute = MMailboxThreadIdRouteImport.update({
   path: '/$threadId',
   getParentRoute: () => MMailboxRoute,
 } as any)
+const MailInboxRoute = MailInboxRouteImport.update({
+  id: '/mail/$accountKey/inbox',
+  path: '/mail/$accountKey/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MailInboxThreadRoute = MailInboxThreadRouteImport.update({
+  id: '/thread/$threadId',
+  path: '/thread/$threadId',
+  getParentRoute: () => MailInboxRoute,
+} as any)
+const MailArchiveRoute = MailArchiveRouteImport.update({
+  id: '/mail/$accountKey/archive',
+  path: '/mail/$accountKey/archive',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MailArchiveThreadRoute = MailArchiveThreadRouteImport.update({
+  id: '/thread/$threadId',
+  path: '/thread/$threadId',
+  getParentRoute: () => MailArchiveRoute,
+} as any)
+const MailLabelRoute = MailLabelRouteImport.update({
+  id: '/mail/$accountKey/label/$labelId',
+  path: '/mail/$accountKey/label/$labelId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MailLabelThreadRoute = MailLabelThreadRouteImport.update({
+  id: '/thread/$threadId',
+  path: '/thread/$threadId',
+  getParentRoute: () => MailLabelRoute,
+} as any)
+const MailSavedRoute = MailSavedRouteImport.update({
+  id: '/mail/$accountKey/saved/$slug',
+  path: '/mail/$accountKey/saved/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MailSavedThreadRoute = MailSavedThreadRouteImport.update({
+  id: '/thread/$threadId',
+  path: '/thread/$threadId',
+  getParentRoute: () => MailSavedRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -201,6 +249,14 @@ export interface FileRoutesByFullPath {
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRoute
   '/m/saved/$slug': typeof MSavedSlugRoute
+  '/mail/$accountKey/inbox': typeof MailInboxRouteWithChildren
+  '/mail/$accountKey/inbox/thread/$threadId': typeof MailInboxThreadRoute
+  '/mail/$accountKey/archive': typeof MailArchiveRouteWithChildren
+  '/mail/$accountKey/archive/thread/$threadId': typeof MailArchiveThreadRoute
+  '/mail/$accountKey/label/$labelId': typeof MailLabelRouteWithChildren
+  '/mail/$accountKey/label/$labelId/thread/$threadId': typeof MailLabelThreadRoute
+  '/mail/$accountKey/saved/$slug': typeof MailSavedRouteWithChildren
+  '/mail/$accountKey/saved/$slug/thread/$threadId': typeof MailSavedThreadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -230,6 +286,14 @@ export interface FileRoutesByTo {
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRoute
   '/m/saved/$slug': typeof MSavedSlugRoute
+  '/mail/$accountKey/inbox': typeof MailInboxRouteWithChildren
+  '/mail/$accountKey/inbox/thread/$threadId': typeof MailInboxThreadRoute
+  '/mail/$accountKey/archive': typeof MailArchiveRouteWithChildren
+  '/mail/$accountKey/archive/thread/$threadId': typeof MailArchiveThreadRoute
+  '/mail/$accountKey/label/$labelId': typeof MailLabelRouteWithChildren
+  '/mail/$accountKey/label/$labelId/thread/$threadId': typeof MailLabelThreadRoute
+  '/mail/$accountKey/saved/$slug': typeof MailSavedRouteWithChildren
+  '/mail/$accountKey/saved/$slug/thread/$threadId': typeof MailSavedThreadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -260,6 +324,14 @@ export interface FileRoutesById {
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRoute
   '/m/saved/$slug': typeof MSavedSlugRoute
+  '/mail/$accountKey/inbox': typeof MailInboxRouteWithChildren
+  '/mail/$accountKey/inbox/thread/$threadId': typeof MailInboxThreadRoute
+  '/mail/$accountKey/archive': typeof MailArchiveRouteWithChildren
+  '/mail/$accountKey/archive/thread/$threadId': typeof MailArchiveThreadRoute
+  '/mail/$accountKey/label/$labelId': typeof MailLabelRouteWithChildren
+  '/mail/$accountKey/label/$labelId/thread/$threadId': typeof MailLabelThreadRoute
+  '/mail/$accountKey/saved/$slug': typeof MailSavedRouteWithChildren
+  '/mail/$accountKey/saved/$slug/thread/$threadId': typeof MailSavedThreadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -291,6 +363,14 @@ export interface FileRouteTypes {
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/mail/$accountKey/inbox'
+    | '/mail/$accountKey/inbox/thread/$threadId'
+    | '/mail/$accountKey/archive'
+    | '/mail/$accountKey/archive/thread/$threadId'
+    | '/mail/$accountKey/label/$labelId'
+    | '/mail/$accountKey/label/$labelId/thread/$threadId'
+    | '/mail/$accountKey/saved/$slug'
+    | '/mail/$accountKey/saved/$slug/thread/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -320,6 +400,14 @@ export interface FileRouteTypes {
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/mail/$accountKey/inbox'
+    | '/mail/$accountKey/inbox/thread/$threadId'
+    | '/mail/$accountKey/archive'
+    | '/mail/$accountKey/archive/thread/$threadId'
+    | '/mail/$accountKey/label/$labelId'
+    | '/mail/$accountKey/label/$labelId/thread/$threadId'
+    | '/mail/$accountKey/saved/$slug'
+    | '/mail/$accountKey/saved/$slug/thread/$threadId'
   id:
     | '__root__'
     | '/'
@@ -349,6 +437,14 @@ export interface FileRouteTypes {
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/mail/$accountKey/inbox'
+    | '/mail/$accountKey/inbox/thread/$threadId'
+    | '/mail/$accountKey/archive'
+    | '/mail/$accountKey/archive/thread/$threadId'
+    | '/mail/$accountKey/label/$labelId'
+    | '/mail/$accountKey/label/$labelId/thread/$threadId'
+    | '/mail/$accountKey/saved/$slug'
+    | '/mail/$accountKey/saved/$slug/thread/$threadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -375,6 +471,10 @@ export interface RootRouteChildren {
   SettingsSectionRoute: typeof SettingsSectionRoute
   MLabelNameRoute: typeof MLabelNameRoute
   MSavedSlugRoute: typeof MSavedSlugRoute
+  MailInboxRoute: typeof MailInboxRouteWithChildren
+  MailArchiveRoute: typeof MailArchiveRouteWithChildren
+  MailLabelRoute: typeof MailLabelRouteWithChildren
+  MailSavedRoute: typeof MailSavedRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -568,6 +668,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MMailboxThreadIdRouteImport
       parentRoute: typeof MMailboxRoute
     }
+    '/mail/$accountKey/inbox': {
+      id: '/mail/$accountKey/inbox'
+      path: '/mail/$accountKey/inbox'
+      fullPath: '/mail/$accountKey/inbox'
+      preLoaderRoute: typeof MailInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mail/$accountKey/inbox/thread/$threadId': {
+      id: '/mail/$accountKey/inbox/thread/$threadId'
+      path: '/thread/$threadId'
+      fullPath: '/mail/$accountKey/inbox/thread/$threadId'
+      preLoaderRoute: typeof MailInboxThreadRouteImport
+      parentRoute: typeof MailInboxRoute
+    }
+    '/mail/$accountKey/archive': {
+      id: '/mail/$accountKey/archive'
+      path: '/mail/$accountKey/archive'
+      fullPath: '/mail/$accountKey/archive'
+      preLoaderRoute: typeof MailArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mail/$accountKey/archive/thread/$threadId': {
+      id: '/mail/$accountKey/archive/thread/$threadId'
+      path: '/thread/$threadId'
+      fullPath: '/mail/$accountKey/archive/thread/$threadId'
+      preLoaderRoute: typeof MailArchiveThreadRouteImport
+      parentRoute: typeof MailArchiveRoute
+    }
+    '/mail/$accountKey/label/$labelId': {
+      id: '/mail/$accountKey/label/$labelId'
+      path: '/mail/$accountKey/label/$labelId'
+      fullPath: '/mail/$accountKey/label/$labelId'
+      preLoaderRoute: typeof MailLabelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mail/$accountKey/label/$labelId/thread/$threadId': {
+      id: '/mail/$accountKey/label/$labelId/thread/$threadId'
+      path: '/thread/$threadId'
+      fullPath: '/mail/$accountKey/label/$labelId/thread/$threadId'
+      preLoaderRoute: typeof MailLabelThreadRouteImport
+      parentRoute: typeof MailLabelRoute
+    }
+    '/mail/$accountKey/saved/$slug': {
+      id: '/mail/$accountKey/saved/$slug'
+      path: '/mail/$accountKey/saved/$slug'
+      fullPath: '/mail/$accountKey/saved/$slug'
+      preLoaderRoute: typeof MailSavedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mail/$accountKey/saved/$slug/thread/$threadId': {
+      id: '/mail/$accountKey/saved/$slug/thread/$threadId'
+      path: '/thread/$threadId'
+      fullPath: '/mail/$accountKey/saved/$slug/thread/$threadId'
+      preLoaderRoute: typeof MailSavedThreadRouteImport
+      parentRoute: typeof MailSavedRoute
+    }
   }
 }
 
@@ -617,6 +773,54 @@ const MMailboxRouteWithChildren = MMailboxRoute._addFileChildren(
   MMailboxRouteChildren,
 )
 
+interface MailInboxRouteChildren {
+  MailInboxThreadRoute: typeof MailInboxThreadRoute
+}
+
+const MailInboxRouteChildren: MailInboxRouteChildren = {
+  MailInboxThreadRoute: MailInboxThreadRoute,
+}
+
+const MailInboxRouteWithChildren = MailInboxRoute._addFileChildren(
+  MailInboxRouteChildren,
+)
+
+interface MailArchiveRouteChildren {
+  MailArchiveThreadRoute: typeof MailArchiveThreadRoute
+}
+
+const MailArchiveRouteChildren: MailArchiveRouteChildren = {
+  MailArchiveThreadRoute: MailArchiveThreadRoute,
+}
+
+const MailArchiveRouteWithChildren = MailArchiveRoute._addFileChildren(
+  MailArchiveRouteChildren,
+)
+
+interface MailLabelRouteChildren {
+  MailLabelThreadRoute: typeof MailLabelThreadRoute
+}
+
+const MailLabelRouteChildren: MailLabelRouteChildren = {
+  MailLabelThreadRoute: MailLabelThreadRoute,
+}
+
+const MailLabelRouteWithChildren = MailLabelRoute._addFileChildren(
+  MailLabelRouteChildren,
+)
+
+interface MailSavedRouteChildren {
+  MailSavedThreadRoute: typeof MailSavedThreadRoute
+}
+
+const MailSavedRouteChildren: MailSavedRouteChildren = {
+  MailSavedThreadRoute: MailSavedThreadRoute,
+}
+
+const MailSavedRouteWithChildren = MailSavedRoute._addFileChildren(
+  MailSavedRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountsRoute: AccountsRouteWithChildren,
@@ -641,6 +845,10 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsSectionRoute: SettingsSectionRoute,
   MLabelNameRoute: MLabelNameRoute,
   MSavedSlugRoute: MSavedSlugRoute,
+  MailInboxRoute: MailInboxRouteWithChildren,
+  MailArchiveRoute: MailArchiveRouteWithChildren,
+  MailLabelRoute: MailLabelRouteWithChildren,
+  MailSavedRoute: MailSavedRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

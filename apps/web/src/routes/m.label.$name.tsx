@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { MailboxRoute } from "@/features/mailbox/MailboxRoute";
+import { LegacyMailRedirect } from "@/features/mailbox/LegacyMailRedirect";
 
 export const Route = createFileRoute("/m/label/$name")({
-  component: MailboxRoute,
+  component: LegacyMailRedirect,
 });
