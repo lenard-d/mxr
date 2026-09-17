@@ -8,6 +8,7 @@ interface SanitizeOpts {
 
 export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
   const dom = DOMPurify(window);
+  dom.removeAllHooks();
   dom.addHook("afterSanitizeAttributes", (node: Element) => {
     if (node.tagName === "A") {
       node.setAttribute("rel", "noopener noreferrer");
@@ -25,109 +26,132 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
       node.remove();
       return;
     }
-    if (node.tagName === "IMG" && opts.allowRemoteImages === false) {
+    if (node.tagName === "IMG" && opts.allowRemoteImages !== true) {
       const src = node.getAttribute("src") ?? "";
-      if (/^https?:\/\//i.test(src)) {
+      if (isRemoteImageSrc(src)) {
         node.setAttribute("data-original-src", src);
         node.removeAttribute("src");
         node.setAttribute("alt", node.getAttribute("alt") ?? "Remote image (blocked)");
       }
     }
   });
-  return dom.sanitize(html, {
-    ALLOWED_TAGS: [
-      "a",
-      "abbr",
-      "address",
-      "article",
-      "aside",
-      "b",
-      "blockquote",
-      "br",
-      "caption",
-      "cite",
-      "code",
-      "col",
-      "colgroup",
-      "dd",
-      "del",
-      "details",
-      "dfn",
-      "div",
-      "dl",
-      "dt",
-      "em",
-      "figcaption",
-      "figure",
-      "footer",
-      "h1",
-      "h2",
-      "h3",
-      "h4",
-      "h5",
-      "h6",
-      "header",
-      "hr",
-      "i",
-      "img",
-      "ins",
-      "kbd",
-      "li",
-      "main",
-      "mark",
-      "nav",
-      "ol",
-      "p",
-      "pre",
-      "q",
-      "s",
-      "samp",
-      "section",
-      "small",
-      "span",
-      "strong",
-      "sub",
-      "summary",
-      "sup",
-      "table",
-      "tbody",
-      "td",
-      "tfoot",
-      "th",
-      "thead",
-      "time",
-      "tr",
-      "u",
-      "ul",
-      "var",
-      "wbr",
-    ],
-    ALLOWED_ATTR: [
-      "href",
-      "title",
-      "alt",
-      "src",
-      "width",
-      "height",
-      "rel",
-      "target",
-      "name",
-      "colspan",
-      "rowspan",
-      "scope",
-      "datetime",
-      "cite",
-      "lang",
-      "dir",
-      "id",
-      "class",
-      "style",
-    ],
-    ALLOW_DATA_ATTR: false,
-    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "base", "link", "meta", "form"],
-    FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"],
-    ADD_URI_SAFE_ATTR: ["target"],
-  }) as unknown as string;
+  let sanitized = "";
+  try {
+    sanitized = dom.sanitize(html, {
+      ALLOWED_TAGS: [
+        "a",
+        "abbr",
+        "address",
+        "article",
+        "aside",
+        "b",
+        "blockquote",
+        "br",
+        "caption",
+        "cite",
+        "code",
+        "col",
+        "colgroup",
+        "dd",
+        "del",
+        "details",
+        "dfn",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "figcaption",
+        "figure",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "i",
+        "img",
+        "ins",
+        "kbd",
+        "li",
+        "main",
+        "mark",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "q",
+        "s",
+        "samp",
+        "section",
+        "small",
+        "span",
+        "strong",
+        "sub",
+        "summary",
+        "sup",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "time",
+        "tr",
+        "u",
+        "ul",
+        "var",
+        "wbr",
+      ],
+      ALLOWED_ATTR: [
+        "href",
+        "title",
+        "alt",
+        "src",
+        "width",
+        "height",
+        "rel",
+        "target",
+        "name",
+        "colspan",
+        "rowspan",
+        "scope",
+        "datetime",
+        "cite",
+        "lang",
+        "dir",
+        "id",
+        "class",
+        "style",
+      ],
+      ALLOW_DATA_ATTR: false,
+      FORBID_TAGS: [
+        "script",
+        "style",
+        "iframe",
+        "object",
+        "embed",
+        "base",
+        "link",
+        "meta",
+        "form",
+      ],
+      FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"],
+      ADD_URI_SAFE_ATTR: ["target"],
+    }) as unknown as string;
+  } finally {
+    dom.removeAllHooks();
+  }
+  return sanitized;
+}
+
+export function hasBlockedRemoteImages(html: string): boolean {
+  if (typeof DOMParser === "undefined") return false;
+  const sanitized = sanitizeHtml(html);
+  const parsedDocument = new DOMParser().parseFromString(sanitized, "text/html");
+  return parsedDocument.querySelector("img[data-original-src]") !== null;
 }
 
 const allowedStyleProperties = new Set([
@@ -283,6 +307,10 @@ function isUnsafeStyleValue(value: string): boolean {
   return /url\s*\(|expression\s*\(|@import|javascript:|vbscript:|data:|-moz-binding/i.test(value);
 }
 
+function isRemoteImageSrc(src: string): boolean {
+  return /^(?:https?:)?\/\//i.test(src.trim());
+}
+
 function isTrackerImage(node: Element): boolean {
   return isTinyImage(node) || isKnownTrackerSrc(node.getAttribute("src") ?? "");
 }
@@ -295,7 +323,8 @@ function isTinyImage(node: Element): boolean {
 
 function isKnownTrackerSrc(src: string): boolean {
   try {
-    const url = new URL(src);
+    const normalizedSrc = src.trim().startsWith("//") ? `https:${src.trim()}` : src;
+    const url = new URL(normalizedSrc);
     const host = url.hostname.toLowerCase();
     const path = url.pathname.toLowerCase();
     return (

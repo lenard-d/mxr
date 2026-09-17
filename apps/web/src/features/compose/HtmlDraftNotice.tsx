@@ -71,7 +71,7 @@ export function HtmlDraftNotice({ refusal }: { refusal: HtmlDraftRefusal }) {
           {refusal.previewHtml ? (
             <MessageBody
               html={refusal.previewHtml}
-              allowRemoteImages={false}
+              showRemoteImagesAction={false}
               theme={emailHtmlTheme}
             />
           ) : (

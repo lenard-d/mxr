@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeHtml } from "./sanitizeHtml";
+import { hasBlockedRemoteImages, sanitizeHtml } from "./sanitizeHtml";
 
 describe("sanitizeHtml", () => {
   it("strips inline <script> tags", () => {
@@ -74,11 +74,25 @@ describe("sanitizeHtml", () => {
     expect(clean).toMatch(/alt="hero"/);
   });
 
-  it("keeps normal remote images by default", () => {
+  it("blocks normal remote images by default", () => {
     const dirty = `<img src="https://cdn.example.com/hero.jpg" width="600" height="400" alt="hero">`;
     const clean = sanitizeHtml(dirty);
 
-    expect(clean).toMatch(/src="https:\/\/cdn\.example\.com\/hero\.jpg"/);
+    expect(clean).not.toMatch(/src="https:\/\/cdn\.example\.com\/hero\.jpg"/);
+    expect(clean).toMatch(/data-original-src="https:\/\/cdn\.example\.com\/hero\.jpg"/);
+    expect(clean).toMatch(/alt="hero"/);
+  });
+
+  it("detects blocked remote images without treating tracker pixels as loadable", () => {
+    expect(hasBlockedRemoteImages('<img src="https://cdn.example.com/hero.jpg">')).toBe(true);
+    expect(hasBlockedRemoteImages('<img src="https://track.customer.io/open.png">')).toBe(false);
+  });
+
+  it("blocks protocol-relative remote images by default", () => {
+    const clean = sanitizeHtml('<img src="//cdn.example.com/hero.jpg">');
+
+    expect(clean).not.toMatch(/src="\/\/cdn\.example\.com\/hero\.jpg"/);
+    expect(clean).toMatch(/data-original-src="\/\/cdn\.example\.com\/hero\.jpg"/);
   });
 
   it("removes known tracker-domain images regardless of size", () => {

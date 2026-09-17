@@ -1,24 +1,33 @@
+import { ImageOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { Button } from "@/components/ui/button";
+import { hasBlockedRemoteImages, sanitizeHtml } from "@/lib/sanitizeHtml";
 import type { EmailHtmlTheme } from "@/state/uiPrefsStore";
 
 interface MessageBodyProps {
   html: string;
-  allowRemoteImages?: boolean;
+  showRemoteImagesAction?: boolean;
   theme?: EmailHtmlTheme;
 }
 
 const IFRAME_SANDBOX = "allow-same-origin allow-popups allow-popups-to-escape-sandbox";
 
-export function MessageBody({ html, allowRemoteImages = true, theme = "dark" }: MessageBodyProps) {
+export function MessageBody({
+  html,
+  showRemoteImagesAction = true,
+  theme = "dark",
+}: MessageBodyProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [height, setHeight] = useState(320);
   const [loaded, setLoaded] = useState(false);
+  const [remoteImagesLoadedFor, setRemoteImagesLoadedFor] = useState<string | null>(null);
+  const remoteImagesLoaded = remoteImagesLoadedFor === html;
+  const blockedRemoteImages = useMemo(() => hasBlockedRemoteImages(html), [html]);
   const srcDoc = useMemo(
-    () => renderHtmlDocument(html, allowRemoteImages, theme),
-    [allowRemoteImages, html, theme],
+    () => renderHtmlDocument(html, remoteImagesLoaded, theme),
+    [html, remoteImagesLoaded, theme],
   );
   const frameBackground = theme === "dark" ? "#11110f" : "#fff";
 
@@ -81,6 +90,25 @@ export function MessageBody({ html, allowRemoteImages = true, theme = "dark" }: 
       className="overflow-hidden rounded-md border border-border"
       style={{ backgroundColor: frameBackground }}
     >
+      {showRemoteImagesAction && blockedRemoteImages && !remoteImagesLoaded ? (
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-2">
+            <ImageOff className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">External images blocked for privacy.</span>
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 shrink-0 px-2 text-xs text-foreground"
+            aria-label="Load remote images"
+            title="Load remote images"
+            onClick={() => setRemoteImagesLoadedFor(html)}
+          >
+            Load remote images
+          </Button>
+        </div>
+      ) : null}
       <iframe
         ref={iframeRef}
         title="HTML message body"

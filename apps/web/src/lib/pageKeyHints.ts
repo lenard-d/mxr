@@ -31,7 +31,6 @@ const READER_HINTS: PageHint[] = [
   { key: "l", label: "Labels" },
   { key: "L", label: "Context" },
   { key: "A", label: "Attachments" },
-  { key: "y", label: "Summary" },
   { key: "p", label: "Sender" },
   { key: "e", label: "Archive" },
   { key: "[/]", label: "Archive & prev/next" },

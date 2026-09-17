@@ -56,34 +56,6 @@ export function fetchThread(threadId: string): Promise<ThreadResponse> {
   return apiFetch<ThreadResponse>(`/api/v1/mail/threads/${threadId}`);
 }
 
-const SUMMARY_TIMEOUT_MS = 125_000;
-
-export async function summarizeThread(threadId: string): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), SUMMARY_TIMEOUT_MS);
-  try {
-    return await apiFetch<unknown>(
-      `/api/v1/mail/threads/${encodeURIComponent(threadId)}/summarize`,
-      {
-        method: "POST",
-        signal: controller.signal,
-      },
-    );
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error(
-        "Summary timed out after 125 seconds. Check the local model or try a smaller thread.",
-        {
-          cause: error,
-        },
-      );
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-
 export function fetchSenderProfile(input: { accountId: string; email: string }): Promise<unknown> {
   const query = new URLSearchParams({ account_id: input.accountId, email: input.email });
   return apiFetch<unknown>(`/api/v1/mail/sender?${query.toString()}`);

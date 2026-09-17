@@ -3,8 +3,9 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { find as findLinks } from "linkifyjs";
 import {
   Archive,
+  ArrowLeft,
   Ban,
-  ChevronDown,
+  Check,
   Clock,
   FileText,
   Forward,
@@ -14,17 +15,16 @@ import {
   Minimize2,
   MoreVertical,
   Paperclip,
+  RefreshCw,
   Reply,
   ReplyAll,
-  RefreshCw,
   Star,
   Tag,
   Trash2,
   UserRound,
-  Check,
+  type LucideIcon,
 } from "lucide-react";
 import {
-  type ComponentProps,
   type CSSProperties,
   type ReactNode,
   useCallback,
@@ -43,7 +43,6 @@ import {
   modifyLabels,
   resolveCommitment,
   shellKey,
-  summarizeThread,
 } from "@/features/mailbox/api";
 import {
   buildMailThreadPathFromMailboxPath,
@@ -86,8 +85,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
@@ -96,13 +93,6 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 interface LabelChange {
   add: string[];
   remove: string[];
-}
-
-interface ThreadSummaryView {
-  model?: string;
-  generatedAt?: string;
-  text: string;
-  bullets: string[];
 }
 
 interface ThreadCommitmentView {
@@ -187,15 +177,9 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const markRead = useOptimisticMailMutation("read", { silentSuccess: true });
   const markReadRef = useRef(markRead.mutate);
   markReadRef.current = markRead.mutate;
-  const [mode, setMode] = useState<"reader" | "plain" | "html">("html");
-  const [remoteImages, setRemoteImages] = useState(true);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
-  const [threadSummary, setThreadSummary] = useState<ThreadSummaryView | null>(null);
-  const [summaryExpanded, setSummaryExpanded] = useState(true);
-  const autoSummaryThreadRef = useRef<string | null>(null);
   const openRail = useModals((state) => state.openRightRail);
-  const closeRail = useModals((state) => state.closeRightRail);
 
   useEffect(() => {
     const paneState = useMailboxPane.getState();
@@ -206,28 +190,6 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     setActivePane("reader");
   }, [data.thread.id, setActivePane]);
 
-  const summary = useMutation({
-    mutationFn: (_input?: { silent?: boolean }) => summarizeThread(data.thread.id),
-    onSuccess: (result, input) => {
-      const view = normalizeThreadSummary(result);
-      if (!view) {
-        if (!input?.silent) {
-          toast.error("Summary failed", { description: "The summary response was empty." });
-        }
-        return;
-      }
-      setThreadSummary(view);
-      setSummaryExpanded(true);
-      closeRail();
-    },
-    onError: (error, input) => {
-      if (!input?.silent) {
-        toast.error("Summary failed", { description: error.message });
-      }
-    },
-  });
-  const summaryMutateRef = useRef(summary.mutate);
-  summaryMutateRef.current = summary.mutate;
   const senderProfile = useMutation({
     mutationFn: (email: string) => fetchSenderProfile({ accountId: data.thread.account_id, email }),
     onSuccess: (result) => openRail("sender-profile", result),
@@ -402,9 +364,6 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       } else if (event.key === "A") {
         event.preventDefault();
         if (attachments.length > 0) openRail("attachments", attachments);
-      } else if (event.key === "y") {
-        event.preventDefault();
-        summary.mutate(undefined);
       } else if (event.key === "p") {
         event.preventDefault();
         if (primarySenderEmail) senderProfile.mutate(primarySenderEmail);
@@ -457,7 +416,6 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     senderProfile,
     snoozeOpen,
     spam,
-    summary,
     trash,
     toggleRead,
     toggleStar,
@@ -467,34 +425,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   ]);
 
   useEffect(() => {
+    if (activePane !== "reader") return;
     const unreadIds = data.messages.flatMap((message) => (message.unread ? [message.id] : []));
     if (unreadIds.length === 0) return;
     const handle = window.setTimeout(() => markReadRef.current(unreadIds), 2000);
     return () => window.clearTimeout(handle);
-  }, [data.messages]);
-
-  useEffect(() => {
-    const cachedSummary = normalizeThreadSummary(data.summary ? { summary: data.summary } : null);
-    setThreadSummary(cachedSummary);
-    setSummaryExpanded(true);
-    if (cachedSummary) {
-      autoSummaryThreadRef.current = data.thread.id;
-      return;
-    }
-    if (autoSummaryThreadRef.current === data.thread.id) return;
-    // Trailing-edge debounce: scrolling through a list and briefly
-    // landing on threads shouldn't fire an LLM call for each one.
-    // Only the thread the user actually stays on for ~250ms triggers
-    // the request. Switching threads before the timer elapses cancels
-    // this pending fire; in-flight requests already sent are left to
-    // complete so the daemon can cache their result.
-    const threadId = data.thread.id;
-    const handle = window.setTimeout(() => {
-      autoSummaryThreadRef.current = threadId;
-      summaryMutateRef.current({ silent: true });
-    }, 250);
-    return () => window.clearTimeout(handle);
-  }, [data.thread.id, data.summary]);
+  }, [activePane, data.messages]);
 
   const overflowActions = useMemo<ReaderOverflowAction[]>(
     () => [
@@ -608,11 +544,22 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         setActivePane("reader");
       }}
     >
-      <header className="border-b border-border px-5 py-3 lg:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-pretty text-lg font-semibold tracking-tight">
+      <header className="border-b border-border px-3 py-2.5 sm:px-5 lg:px-6">
+        <div className="flex min-w-0 items-start gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            className="size-11 shrink-0 sm:size-10"
+            aria-label="Back to mailbox"
+            title="Back to mailbox"
+            onClick={() => void navigate({ to: mailboxPath })}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="min-w-0 text-pretty text-lg font-semibold tracking-tight">
                 {data.thread.subject || "(no subject)"}
               </h1>
               {threadLabels.map((label) => (
@@ -623,78 +570,42 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               <span>{data.thread.message_count} messages</span>
               <span>·</span>
               <span>{data.thread.unread_count} unread</span>
-              <span>·</span>
-              <span>
+              <span className="hidden sm:inline">·</span>
+              <span className="hidden min-w-0 truncate sm:inline">
                 {data.thread.participants
-                  .map((p) => p.name || p.email)
+                  .map((participant) => participant.name || participant.email)
                   .slice(0, 4)
                   .join(", ")}
               </span>
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
-            <div className="flex items-center gap-1.5">
-              <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                View
-              </span>
-              <ToggleGroup
-                type="single"
-                value={mode}
-                onValueChange={(value) => {
-                  if (value) setMode(value as typeof mode);
-                }}
-                aria-label="Message body view"
-              >
-                {(["html", "reader", "plain"] as const).map((viewMode) => (
-                  <ToggleGroupItem key={viewMode} value={viewMode} size="sm">
-                    {mode === viewMode ? <Check className="size-3" /> : null}
-                    {viewMode === "html" ? "HTML" : viewMode === "reader" ? "Reader" : "Plain"}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            </div>
-            <label
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-border/90 bg-muted/70 px-2.5 text-xs font-medium text-foreground shadow-sm"
-              htmlFor="thread-remote-images"
-            >
-              <span>Remote images</span>
-              <Switch
-                id="thread-remote-images"
-                checked={remoteImages}
-                onCheckedChange={setRemoteImages}
-                aria-label="Remote images"
-              />
-            </label>
-          </div>
+          <ReaderActionMenu actions={overflowActions} />
         </div>
         <div
-          className="mt-3 flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-hidden border-t border-border/70 pt-3"
+          className="-mx-1 mt-2 flex min-w-0 items-center gap-1 overflow-x-auto border-t border-border/70 px-1 pt-2.5"
           role="toolbar"
           aria-label="Message actions"
         >
-          <ReaderActionButton onClick={() => compose("single")} shortcut="r">
-            <Reply className="size-3" />
-            Reply
-          </ReaderActionButton>
-          {canReplyAll ? (
-            <ReaderActionButton onClick={() => compose("all")} shortcut="a">
-              <ReplyAll className="size-3" />
-              Reply all
-            </ReaderActionButton>
-          ) : null}
-          <ReaderActionButton onClick={() => compose("forward")} shortcut="f">
-            <Forward className="size-3" />
-            Forward
-          </ReaderActionButton>
           <ReaderActionButton
-            onClick={() => summary.mutate(undefined)}
-            disabled={summary.isPending}
-            shortcut="y"
-          >
-            <FileText className="size-3" />
-            {summary.isPending ? "Summarizing..." : "Summary"}
-          </ReaderActionButton>
-          <ReaderActionMenu actions={overflowActions} />
+            icon={Reply}
+            label="Reply"
+            shortcut="r"
+            onClick={() => compose("single")}
+          />
+          {canReplyAll ? (
+            <ReaderActionButton
+              icon={ReplyAll}
+              label="Reply all"
+              shortcut="a"
+              onClick={() => compose("all")}
+            />
+          ) : null}
+          <ReaderActionButton
+            icon={Forward}
+            label="Forward"
+            shortcut="f"
+            onClick={() => compose("forward")}
+          />
         </div>
       </header>
 
@@ -722,15 +633,6 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-3 sm:px-6 lg:px-8"
       >
         <div className="flex w-full min-w-0 flex-col">
-          {threadSummary ? (
-            <ThreadSummaryAccordion
-              summary={threadSummary}
-              expanded={summaryExpanded}
-              onExpandedChange={setSummaryExpanded}
-            />
-          ) : summary.isPending ? (
-            <ThreadSummaryLoading />
-          ) : null}
           {openCommitments.length > 0 ? (
             <ThreadCommitmentChips
               commitments={openCommitments}
@@ -743,8 +645,6 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               key={message.id}
               message={message}
               body={bodiesByMessage.get(message.id)}
-              mode={mode}
-              remoteImages={remoteImages}
               emailHtmlTheme={emailHtmlTheme}
               threadId={data.thread.id}
             />
@@ -754,70 +654,6 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         </div>
       </div>
     </article>
-  );
-}
-
-function ThreadSummaryAccordion({
-  summary,
-  expanded,
-  onExpandedChange,
-}: {
-  summary: ThreadSummaryView;
-  expanded: boolean;
-  onExpandedChange: (expanded: boolean) => void;
-}) {
-  return (
-    <section className="mb-4 rounded-lg border border-border/80 bg-muted/35 shadow-sm">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-        aria-expanded={expanded}
-        onClick={() => onExpandedChange(!expanded)}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <FileText className="size-4 shrink-0 text-primary" />
-          <span className="font-medium">AI overview</span>
-          {summary.model ? (
-            <span className="truncate font-mono text-2xs text-muted-foreground">
-              {summary.model}
-            </span>
-          ) : null}
-        </span>
-        <ChevronDown
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            expanded && "rotate-180",
-          )}
-        />
-      </button>
-      {expanded ? (
-        <div className="break-words border-t border-border/70 px-4 py-3 text-sm leading-6 text-foreground">
-          {summary.bullets.length > 0 ? (
-            <ul className="space-y-1.5">
-              {summary.bullets.map((item) => (
-                <li key={item} className="flex gap-2">
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
-                  <span className="min-w-0 break-words">{item}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="whitespace-pre-wrap break-words">{summary.text}</p>
-          )}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function ThreadSummaryLoading() {
-  return (
-    <section className="mb-4 rounded-lg border border-border/80 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
-      <span className="flex items-center gap-2">
-        <RefreshCw className="size-3.5 animate-spin" />
-        Summarizing thread…
-      </span>
-    </section>
   );
 }
 
@@ -981,10 +817,12 @@ function ReaderActionMenu({ actions }: { actions: ReaderOverflowAction[] }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          type="button"
           variant="outline"
-          size="icon"
-          className="h-9 w-9 shrink-0 rounded-md border-border/90 bg-muted/60 shadow-sm hover:border-primary/60 hover:bg-primary/15"
+          size="icon-lg"
+          className="size-11 shrink-0 rounded-md border-border/90 bg-muted/60 shadow-sm hover:border-primary/60 hover:bg-primary/15 sm:size-10"
           aria-label="More message actions"
+          title="More message actions"
         >
           <MoreVertical className="size-4" />
         </Button>
@@ -1010,34 +848,27 @@ function ReaderActionMenu({ actions }: { actions: ReaderOverflowAction[] }) {
 }
 
 function ReaderActionButton({
-  className,
-  children,
+  icon: Icon,
+  label,
   shortcut,
-  title,
-  ...props
-}: ComponentProps<typeof Button> & { shortcut?: string }) {
-  const visibleShortcut = shortcut ?? (typeof title === "string" ? title : undefined);
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  shortcut: string;
+  onClick: () => void;
+}) {
   return (
     <Button
+      type="button"
       variant="outline"
-      size="sm"
-      className={cn(
-        "h-9 rounded-md border-border/90 bg-muted/60 px-3 text-xs shadow-sm hover:border-primary/60 hover:bg-primary/15",
-        "shrink-0",
-        className,
-      )}
-      title={title}
-      {...props}
+      size="icon-lg"
+      className="size-11 rounded-md border-border/90 bg-muted/60 shadow-sm hover:border-primary/60 hover:bg-primary/15 sm:size-10"
+      aria-label={label}
+      title={`${label} (${shortcut})`}
+      onClick={onClick}
     >
-      {children}
-      {visibleShortcut ? (
-        <>
-          {" "}
-          <kbd className="ml-1.5 rounded border border-border/80 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
-            {visibleShortcut}
-          </kbd>
-        </>
-      ) : null}
+      <Icon className="size-4" />
     </Button>
   );
 }
@@ -1045,20 +876,17 @@ function ReaderActionButton({
 function ThreadMessage({
   message,
   body,
-  mode,
-  remoteImages,
   emailHtmlTheme,
   threadId,
 }: {
   message: MessageRowView;
   body?: MessageBodyView;
-  mode: "reader" | "plain" | "html";
-  remoteImages: boolean;
   emailHtmlTheme: "dark" | "original";
   threadId: string;
 }) {
-  const plain = body?.reader_text ?? body?.text_plain ?? message.snippet;
-  const html = body?.text_html;
+  const plain = body?.reader_text || body?.text_plain || message.snippet;
+  const rawHtml = body?.text_html;
+  const html = rawHtml?.trim() ? rawHtml : null;
   const attachments = body?.attachments ?? [];
   const calendar = body?.metadata?.calendar;
   return (
@@ -1104,8 +932,8 @@ function ThreadMessage({
         />
       )}
       <div className="pb-6 text-[15px] leading-7">
-        {mode === "html" && html ? (
-          <MessageBody html={html} allowRemoteImages={remoteImages} theme={emailHtmlTheme} />
+        {html ? (
+          <MessageBody key={message.id} html={html} theme={emailHtmlTheme} />
         ) : (
           <LinkifiedPre text={plain || "No readable body."} />
         )}
@@ -1171,20 +999,6 @@ function formatAddress(address: { name?: string | null; email: string }): string
   return name ? `${name} <${address.email}>` : address.email;
 }
 
-function normalizeThreadSummary(payload: unknown): ThreadSummaryView | null {
-  const source =
-    isRecord(payload) && isRecord(payload.summary)
-      ? payload.summary
-      : isRecord(payload)
-        ? payload
-        : null;
-  const text = typeof source?.text === "string" ? source.text.trim() : "";
-  if (!text) return null;
-  const model = typeof source?.model === "string" ? source.model : undefined;
-  const generatedAt = typeof source?.generated_at === "string" ? source.generated_at : undefined;
-  return { generatedAt, model, text, bullets: summaryBullets(text) };
-}
-
 function extractThreadCommitments(payload: unknown): ThreadCommitmentView[] {
   const commitments =
     isRecord(payload) && Array.isArray(payload.commitments) ? payload.commitments : [];
@@ -1211,21 +1025,6 @@ function shortDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function summaryBullets(text: string): string[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) =>
-      line
-        .trim()
-        .replace(/^[-*•]\s+/, "")
-        .replace(/^\d+[.)]\s+/, ""),
-    )
-    .filter((line) => !/^(summary|next steps):$/i.test(line))
-    .filter(Boolean);
-  if (lines.length > 1) return lines;
-  return [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
