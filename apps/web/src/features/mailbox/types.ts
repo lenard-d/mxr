@@ -56,6 +56,9 @@ export interface SidebarLens {
   labelId?: string | null;
   savedSearch?: string | null;
   senderEmail?: string | null;
+  accountId?: string | null;
+  /** Explicit system destination metadata; never infer destructive actions from a label name. */
+  dropAction?: "archive" | "spam" | "trash" | null;
 }
 
 export interface SidebarItem {
@@ -64,6 +67,8 @@ export interface SidebarItem {
   unread?: number;
   total?: number;
   active?: boolean;
+  account_id?: string | null;
+  accountId?: string | null;
   lens?: SidebarLens;
 }
 

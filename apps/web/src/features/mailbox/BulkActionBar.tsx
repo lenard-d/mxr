@@ -2,9 +2,11 @@ import { Archive, CheckCheck, Clock, Mail, ShieldAlert, Star, Trash2, X } from "
 import { useState } from "react";
 
 import { SnoozeDialog } from "./SnoozeDialog";
+import type { MessageRowView } from "./types";
 import type { MailAction } from "./useOptimisticMailMutation";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -26,35 +28,99 @@ const actions: Array<{ action: MailAction; label: string; icon: typeof Archive }
 
 const confirmBeforeBulk = new Set<MailAction>(["archive", "trash", "spam"]);
 
-export function BulkActionBar() {
+interface BulkActionBarProps {
+  /** Loaded rows make the master checkbox represent this page, not all mail. */
+  rows?: MessageRowView[];
+  /** Optional mailbox paging context shown beside the accessible selection status. */
+  loadedStatus?: string;
+}
+
+export function BulkActionBar({ rows, loadedStatus }: BulkActionBarProps = {}) {
   const ids = useSelection((state) => state.ids);
   const clear = useSelection((state) => state.clear);
+  const selectMany = useSelection((state) => state.selectMany);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
-  const selected = [...ids];
-  if (selected.length === 0) return null;
+  const hasLoadedRows = rows !== undefined;
+  const selected = hasLoadedRows
+    ? rows.filter((row) => ids.has(row.id)).map((row) => row.id)
+    : [...ids];
+  const allLoadedSelected = hasLoadedRows && rows.length > 0 && selected.length === rows.length;
+  const someLoadedSelected = hasLoadedRows && selected.length > 0 && !allLoadedSelected;
+
+  if (!hasLoadedRows && selected.length === 0) return null;
+
   return (
     <>
-      <div className="absolute inset-x-4 bottom-4 z-10 flex items-center gap-2 rounded-xl border border-border-strong bg-popover/95 px-3 py-2 shadow-2xl backdrop-blur">
-        <div className="mr-2 font-mono text-2xs text-muted-foreground">
-          {selected.length} selected
-        </div>
-        {actions.map((item) => (
-          <BulkButton
-            key={item.action}
-            action={item.action}
-            label={item.label}
-            icon={item.icon}
-            ids={selected}
+      <div
+        className="sticky top-0 z-20 flex min-h-10 flex-wrap items-center gap-1.5 border-b border-border bg-background/95 px-3 py-1.5 backdrop-blur"
+        role="toolbar"
+        aria-label="Mailbox selection and bulk actions"
+      >
+        {hasLoadedRows ? (
+          <Checkbox
+            checked={allLoadedSelected ? true : someLoadedSelected ? "indeterminate" : false}
+            onCheckedChange={(checked) => {
+              if (checked === true) selectMany(rows.map((row) => row.id));
+              else clear();
+            }}
+            aria-label={
+              allLoadedSelected ? "Deselect all loaded messages" : "Select all loaded messages"
+            }
+            aria-describedby="mailbox-selection-status"
+            data-testid="mailbox-master-checkbox"
+            className="mr-1 size-4"
           />
-        ))}
-        <Button variant="secondary" size="sm" onClick={() => setSnoozeOpen(true)}>
-          <Clock className="size-3" />
-          Snooze
-        </Button>
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={clear}>
-          <X className="size-3" />
-          Clear
-        </Button>
+        ) : null}
+        <div
+          id="mailbox-selection-status"
+          role="status"
+          aria-live="polite"
+          className="mr-1 min-w-0 truncate font-mono text-2xs text-muted-foreground"
+        >
+          {hasLoadedRows
+            ? selected.length > 0
+              ? `${selected.length} of ${rows.length} loaded messages selected`
+              : `${rows.length} loaded messages`
+            : `${selected.length} selected`}
+        </div>
+        {loadedStatus ? (
+          <span className="hidden truncate font-mono text-2xs text-muted-foreground sm:inline">
+            · {loadedStatus}
+          </span>
+        ) : null}
+        {selected.length > 0 ? (
+          <>
+            <span className="mx-0.5 h-5 w-px bg-border" aria-hidden="true" />
+            {actions.map((item) => (
+              <BulkButton
+                key={item.action}
+                action={item.action}
+                label={item.label}
+                icon={item.icon}
+                ids={selected}
+              />
+            ))}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title="Snooze"
+              aria-label="Snooze"
+              onClick={() => setSnoozeOpen(true)}
+            >
+              <Clock className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="ml-auto"
+              title="Clear selection"
+              aria-label="Clear selection"
+              onClick={clear}
+            >
+              <X className="size-3.5" />
+            </Button>
+          </>
+        ) : null}
       </div>
       <SnoozeDialog
         open={snoozeOpen}
@@ -88,13 +154,14 @@ function BulkButton({
   return (
     <>
       <Button
-        variant="secondary"
-        size="sm"
+        variant="ghost"
+        size="icon-sm"
+        title={label}
+        aria-label={label}
         onClick={() => (needsConfirm ? setConfirmOpen(true) : run())}
         disabled={mutation.isPending}
       >
-        <Icon className="size-3" />
-        {label}
+        <Icon className="size-3.5" />
       </Button>
       {needsConfirm ? (
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

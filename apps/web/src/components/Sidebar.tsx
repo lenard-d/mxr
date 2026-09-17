@@ -30,6 +30,11 @@ import { ConnectionPill } from "@/components/ConnectionPill";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  MailDropTarget,
+  resolveSidebarDropTarget,
+  type MailDropTarget as MailDropTargetData,
+} from "@/features/mailbox/MailDndContext";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import type { SidebarItem } from "@/features/mailbox/types";
 import { cn } from "@/lib/utils";
@@ -42,6 +47,7 @@ interface NavItem {
   Icon: ComponentType<{ className?: string }>;
   badge?: string | number;
   shortcut?: string;
+  dropTarget?: MailDropTargetData;
 }
 
 const primary: NavItem[] = [
@@ -63,8 +69,23 @@ const fallbackLenses: NavItem[] = [
   { to: "/m/starred", label: "Starred", Icon: Star },
   { to: "/m/snoozed", label: "Snoozed", Icon: Sparkles },
   { to: "/m/sent", label: "Sent", Icon: Send },
-  { to: "/m/archive", label: "Archive", Icon: Archive },
-  { to: "/m/trash", label: "Trash", Icon: Trash2 },
+  {
+    to: "/m/archive",
+    label: "Archive",
+    Icon: Archive,
+    dropTarget: {
+      id: "system:archive:fallback",
+      label: "Archive",
+      kind: "system",
+      action: "archive",
+    },
+  },
+  {
+    to: "/m/trash",
+    label: "Trash",
+    Icon: Trash2,
+    dropTarget: { id: "system:trash:fallback", label: "Trash", kind: "system", action: "trash" },
+  },
 ];
 
 const systemItems: NavItem[] = [
@@ -100,6 +121,7 @@ export function Sidebar() {
               label: item.label,
               Icon: iconForSidebarItem(item),
               badge: item.unread && item.unread > 0 ? item.unread : undefined,
+              dropTarget: resolveSidebarDropTarget(item),
             })),
           }))
         : [{ label: "Lenses", items: fallbackLenses }];
@@ -285,15 +307,20 @@ function SidebarLink({ item, collapsed, active, focused, onFocusPane }: LinkProp
       ) : null}
     </Link>
   );
+  const content = item.dropTarget ? (
+    <MailDropTarget target={item.dropTarget}>{inner}</MailDropTarget>
+  ) : (
+    inner
+  );
   if (collapsed) {
     return (
       <Tooltip>
-        <TooltipTrigger asChild>{inner}</TooltipTrigger>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
         <TooltipContent side="right">{item.label}</TooltipContent>
       </Tooltip>
     );
   }
-  return inner;
+  return content;
 }
 
 function isItemActive(path: string, to: string): boolean {

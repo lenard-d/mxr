@@ -136,6 +136,30 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
     expect(remaining).toEqual(["m3"]);
   });
 
+  test("updates the infinite mailbox cache used by the live list", async () => {
+    const infiniteKey = ["mailbox", { lens: "inbox", view: "threads" }] as const;
+    client.setQueryData(infiniteKey, {
+      pages: [structuredClone(baseMailbox)],
+      pageParams: [0],
+    });
+    api.moveMessagesToLabel.mockResolvedValue(mutationSuccess(1));
+
+    const { result } = renderHook(
+      () => useOptimisticMailMutation("move", { payload: { label: "Receipts" } }),
+      { wrapper: wrapper(client) },
+    );
+
+    await act(async () => {
+      await result.current.mutateAsync(["m1"]);
+    });
+
+    const after = client.getQueryData(infiniteKey) as {
+      pages: typeof baseMailbox[];
+      pageParams: number[];
+    };
+    expect(after.pages[0]?.mailbox.groups[0]?.rows.map((row) => row.id)).toEqual(["m2", "m3"]);
+  });
+
   test("route(ids, to=Home, from=Notto) optimistically removes rows and calls routeMessages", async () => {
     api.routeMessages.mockResolvedValue(mutationSuccess(2));
 

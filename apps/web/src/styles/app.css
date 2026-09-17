@@ -110,7 +110,6 @@
 }
 
 [data-density="compact"] .mailbox-row {
-  grid-template-columns: 20px 20px minmax(104px, 160px) 1fr auto;
   gap: calc(var(--spacing) * 1.5);
   padding-inline: calc(var(--spacing) * 2);
 }

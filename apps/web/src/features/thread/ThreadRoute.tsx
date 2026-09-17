@@ -462,11 +462,14 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   ]);
 
   useEffect(() => {
+    // Previewing a thread keeps mailbox keyboard ownership. Only an explicit
+    // reader activation may start the delayed mark-read mutation.
+    if (activePane !== "reader") return;
     const unreadIds = data.messages.flatMap((message) => (message.unread ? [message.id] : []));
     if (unreadIds.length === 0) return;
     const handle = window.setTimeout(() => markReadRef.current(unreadIds), 2000);
     return () => window.clearTimeout(handle);
-  }, [data.messages]);
+  }, [activePane, data.messages]);
 
   useEffect(() => {
     const cachedSummary = normalizeThreadSummary(data.summary ? { summary: data.summary } : null);
