@@ -128,7 +128,7 @@
 }
 
 .mailbox-row[data-unread="true"] {
-  background: hsl(var(--foreground) / 0.055);
+  background: hsl(var(--foreground) / 0.07);
   color: hsl(var(--foreground));
 }
 

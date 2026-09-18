@@ -69,7 +69,7 @@ export function AppShell() {
     }
     if (window.localStorage.getItem(G_A_MIGRATION_KEY)) return;
     toast.info("`g a` now opens All Mail. Analytics moved to `g y`. Press ? for the full list.", {
-      duration: 8000,
+      duration: 5_000,
       onDismiss: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
       onAutoClose: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
     });

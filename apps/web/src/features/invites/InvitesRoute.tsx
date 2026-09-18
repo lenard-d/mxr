@@ -85,12 +85,17 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
           : "Declining invite…",
       {
         id: `invite-${message_id}`,
-        duration: 1100,
+        className: "toast-category-undo",
+        duration: 4_500,
         action: {
           label: "Undo",
           onClick: () => {
             cancel();
-            toast.success("Cancelled", { id: `invite-${message_id}`, duration: 1500 });
+            toast.success("Cancelled", {
+              id: `invite-${message_id}`,
+              className: "toast-category-undo",
+              duration: 2_500,
+            });
           },
         },
       },

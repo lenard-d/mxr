@@ -18,6 +18,8 @@ export function Toaster() {
       data-show-sent-toasts={toastPreferences.sent}
       position="top-right"
       gap={8}
+      visibleToasts={3}
+      expand={false}
       duration={4_000}
       closeButton
       toastOptions={{

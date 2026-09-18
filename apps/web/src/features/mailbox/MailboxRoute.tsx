@@ -1,9 +1,14 @@
 import { useRouterState, useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { MailboxList } from "./MailboxList";
 import { SyncProgressBanner } from "./SyncProgressBanner";
+import { MailboxStatusFilter } from "./MailboxStatusFilter";
+import {
+  filterMailboxGroups,
+  type MailboxStatusFilter as MailboxStatusFilterValue,
+} from "./statusFilter";
 import { useMailboxQuery } from "./useMailboxQuery";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -22,6 +27,7 @@ export function MailboxRoute() {
   const activeThreadId = location?.threadId;
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
+  const [statusFilter, setStatusFilter] = useState<MailboxStatusFilterValue>("all");
   const mailbox = useMailboxQuery();
 
   useEffect(() => {
@@ -75,6 +81,7 @@ export function MailboxRoute() {
       ? mailbox.accountResolution.accountKey
       : location.accountKey ?? "all";
   const mailboxPath = mailboxPathFromLocation(location, accountKey);
+  const visibleGroups = filterMailboxGroups(data.mailbox.groups, statusFilter);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background lg:border-r lg:border-border">
@@ -82,9 +89,11 @@ export function MailboxRoute() {
       <MailboxHeader
         title={data.mailbox.lensLabel}
         subtitle={`${data.mailbox.counts.unread ?? 0} unread / ${data.mailbox.counts.total ?? 0} total`}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
       />
       <MailboxList
-        groups={data.mailbox.groups}
+        groups={visibleGroups}
         mailboxPath={mailboxPath}
         activeThreadId={activeThreadId}
         previewOnFocus={Boolean(activeThreadId)}
@@ -125,13 +134,26 @@ function AccountUnavailable({ resolution }: { resolution: Extract<MailAccountRes
   );
 }
 
-function MailboxHeader({ title, subtitle }: { title: string; subtitle: string }) {
+function MailboxHeader({
+  title,
+  subtitle,
+  statusFilter,
+  onStatusFilterChange,
+}: {
+  title: string;
+  subtitle: string;
+  statusFilter?: MailboxStatusFilterValue;
+  onStatusFilterChange?: (value: MailboxStatusFilterValue) => void;
+}) {
   return (
-    <div className="flex min-h-12 items-center justify-between border-b border-border px-4 py-2">
-      <div className="min-w-0">
+    <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4">
+      <div className="min-w-0 flex-1">
         <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
         <div className="font-mono text-2xs text-muted-foreground">{subtitle}</div>
       </div>
+      {statusFilter !== undefined && onStatusFilterChange ? (
+        <MailboxStatusFilter value={statusFilter} onChange={onStatusFilterChange} />
+      ) : null}
     </div>
   );
 }

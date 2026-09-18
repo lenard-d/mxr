@@ -94,14 +94,16 @@ export function InviteCard({
         : locale.status.invite_pending_decline;
     toast(message, {
       id: `invite-${messageId}`,
-      duration: 1100,
+      className: "toast-category-undo",
+      duration: 4_500,
       action: {
         label: "Undo",
         onClick: () => {
           cancel();
           toast.success(locale.status.invite_cancelled, {
             id: `invite-${messageId}`,
-            duration: 1500,
+            className: "toast-category-undo",
+            duration: 2_500,
           });
         },
       },

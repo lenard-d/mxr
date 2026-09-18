@@ -197,7 +197,7 @@ function ThreadSplitResizeHandle({
       aria-valuetext={`${Math.round(ratio * 100)}% mailbox width`}
       tabIndex={0}
       data-testid="thread-split-resize-handle"
-      className="hidden h-full w-2 cursor-col-resize touch-none items-center justify-center border-0 bg-transparent p-0 outline-none transition-colors hover:bg-border focus-visible:bg-primary/30 lg:flex"
+      className="hidden h-full w-2 cursor-ew-resize touch-none items-center justify-center border-0 bg-transparent p-0 outline-none transition-colors hover:bg-border focus-visible:bg-primary/30 lg:flex"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
