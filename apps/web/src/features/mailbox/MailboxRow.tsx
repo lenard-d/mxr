@@ -2,8 +2,10 @@ import {
   Archive,
   ClipboardList,
   Link as LinkIcon,
+  Mail,
   MailOpen,
   MessagesSquare,
+  MoreHorizontal,
   Paperclip,
   ShieldAlert,
   Star,
@@ -17,6 +19,12 @@ import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 interface MailboxRowProps {
@@ -56,6 +64,9 @@ export function MailboxRow({
 }: MailboxRowProps) {
   const star = useOptimisticMailMutation(row.starred ? "unstar" : "star");
   const read = useOptimisticMailMutation(row.unread ? "read" : "unread");
+  const archive = useOptimisticMailMutation("archive");
+  const trash = useOptimisticMailMutation("trash");
+  const spam = useOptimisticMailMutation("spam");
   const selectionShiftRef = useRef(false);
   const conversationCount =
     typeof row.message_count === "number" && row.message_count > 1 ? row.message_count : null;
@@ -87,7 +98,10 @@ export function MailboxRow({
       }}
       onKeyDown={(event) => {
         const target = event.target;
-        if (target instanceof HTMLElement && target.closest("button, [role=checkbox], [data-mailbox-control]")) {
+        if (
+          target instanceof HTMLElement &&
+          target.closest("button, [role=checkbox], [data-mailbox-control]")
+        ) {
           return;
         }
         if (event.key === "Enter" || event.key === " ") {
@@ -126,7 +140,10 @@ export function MailboxRow({
               selectionShiftRef.current = false;
             }}
             aria-label={`${selected ? "Deselect" : "Select"} message from ${row.sender}: ${subject}`}
-            className="mailbox-checkbox size-4 rounded-none"
+            className={cn(
+              "mailbox-checkbox size-4 rounded-none",
+              selected && "mailbox-checkbox-selected",
+            )}
           />
         </div>
       )}
@@ -202,17 +219,32 @@ export function MailboxRow({
           {row.date_label}
         </div>
         {readOnly ? null : (
-          <div className="mailbox-row-quick-actions pointer-events-none absolute right-0 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-            <QuickAction
-              icon={MailOpen}
-              label={row.unread ? "Mark read" : "Mark unread"}
-              onClick={() => read.mutate([row.id])}
+          <>
+            <MobileRowActions
+              row={row}
+              onToggleRead={() => read.mutate([row.id])}
+              onToggleStar={() => star.mutate([row.id])}
+              onArchive={() => archive.mutate([row.id])}
+              onTrash={() => trash.mutate([row.id])}
+              onSpam={() => spam.mutate([row.id])}
             />
-            <QuickArchive id={row.id} />
-          </div>
+            <div className="mailbox-row-quick-actions pointer-events-none absolute right-0 z-10 hidden items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 md:flex">
+              <QuickAction
+                icon={MailOpen}
+                label={row.unread ? "Mark read" : "Mark unread"}
+                onClick={() => read.mutate([row.id])}
+              />
+              <QuickArchive
+                onArchive={() => archive.mutate([row.id])}
+                onTrash={() => trash.mutate([row.id])}
+                onSpam={() => spam.mutate([row.id])}
+              />
+            </div>
+          </>
         )}
         {trailingAction ? (
           <div
+            className="mailbox-row-custom-action"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
@@ -234,9 +266,9 @@ function TriageBadge({ verdict, reason }: { verdict: string; reason?: string | n
       className={cn(
         "h-5 shrink-0 rounded px-1.5 font-mono text-[10px]",
         normalized === "ACTION" && "border-red-500/45 bg-red-500/15 text-red-600 dark:text-red-300",
-        normalized === "FYI" && "border-blue-500/45 bg-blue-500/15 text-blue-600 dark:text-blue-300",
-        normalized === "ROUTINE" &&
-          "border-muted-foreground/35 bg-muted text-muted-foreground",
+        normalized === "FYI" &&
+          "border-blue-500/45 bg-blue-500/15 text-blue-600 dark:text-blue-300",
+        normalized === "ROUTINE" && "border-muted-foreground/35 bg-muted text-muted-foreground",
       )}
     >
       {normalized}
@@ -272,16 +304,78 @@ function ConversationBadge({ count }: { count: number }) {
   );
 }
 
-function QuickArchive({ id }: { id: string }) {
-  const archive = useOptimisticMailMutation("archive");
-  const trash = useOptimisticMailMutation("trash");
-  const spam = useOptimisticMailMutation("spam");
+function QuickArchive({
+  onArchive,
+  onTrash,
+  onSpam,
+}: {
+  onArchive: () => void;
+  onTrash: () => void;
+  onSpam: () => void;
+}) {
   return (
     <>
-      <QuickAction icon={Archive} label="Archive" onClick={() => archive.mutate([id])} />
-      <QuickAction icon={Trash2} label="Trash" onClick={() => trash.mutate([id])} />
-      <QuickAction icon={ShieldAlert} label="Spam" onClick={() => spam.mutate([id])} />
+      <QuickAction icon={Archive} label="Archive" onClick={onArchive} />
+      <QuickAction icon={Trash2} label="Trash" onClick={onTrash} />
+      <QuickAction icon={ShieldAlert} label="Spam" onClick={onSpam} />
     </>
+  );
+}
+
+function MobileRowActions({
+  row,
+  onToggleRead,
+  onToggleStar,
+  onArchive,
+  onTrash,
+  onSpam,
+}: {
+  row: MessageRowView;
+  onToggleRead: () => void;
+  onToggleStar: () => void;
+  onArchive: () => void;
+  onTrash: () => void;
+  onSpam: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="More message actions"
+          className="mailbox-row-mobile-action-trigger size-10 md:hidden"
+          data-mailbox-control="mobile-actions"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <MoreHorizontal className="size-5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onToggleRead}>
+          {row.unread ? <MailOpen className="size-4" /> : <Mail className="size-4" />}
+          {row.unread ? "Mark read" : "Mark unread"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onToggleStar}>
+          <Star className={cn("size-4", row.starred && "fill-current")} />
+          {row.starred ? "Unstar" : "Star"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onArchive}>
+          <Archive className="size-4" />
+          Archive
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onTrash}>
+          <Trash2 className="size-4" />
+          Trash
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onSpam}>
+          <ShieldAlert className="size-4" />
+          Spam
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

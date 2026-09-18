@@ -136,10 +136,7 @@ export function ThreadRoute() {
       data-thread-split-ratio={readerFull ? undefined : threadSplitRatio}
     >
       <div
-        className={cn(
-          "hidden min-w-0 shrink-0",
-          readerFull ? "lg:hidden" : "lg:flex",
-        )}
+        className={cn("hidden min-w-0 shrink-0", readerFull ? "lg:hidden" : "lg:flex")}
         style={splitStyle}
       >
         <MailboxRoute />
@@ -295,6 +292,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const markReadAction = useOptimisticMailMutation("read");
   const markRead = useOptimisticMailMutation("read", { silentSuccess: true });
   const markReadRef = useRef(markRead.mutate);
+  const autoReadStateRef = useRef({ pending: new Set<string>(), completed: new Set<string>() });
   markReadRef.current = markRead.mutate;
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
@@ -552,14 +550,28 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   ]);
 
   useEffect(() => {
-    // Previewing a thread keeps mailbox keyboard ownership. Only an explicit
-    // reader activation may start the delayed mark-read mutation.
-    if (activePane !== "reader") return;
-    const unreadIds = data.messages.flatMap((message) => (message.unread ? [message.id] : []));
+    const autoReadState = autoReadStateRef.current;
+    const unreadIds = data.messages.flatMap((message) =>
+      message.unread &&
+      !autoReadState.pending.has(message.id) &&
+      !autoReadState.completed.has(message.id)
+        ? [message.id]
+        : [],
+    );
     if (unreadIds.length === 0) return;
-    const handle = window.setTimeout(() => markReadRef.current(unreadIds), 2000);
-    return () => window.clearTimeout(handle);
-  }, [activePane, data.messages]);
+    for (const id of unreadIds) autoReadState.pending.add(id);
+    markReadRef.current(unreadIds, {
+      onSuccess: () => {
+        for (const id of unreadIds) {
+          autoReadState.pending.delete(id);
+          autoReadState.completed.add(id);
+        }
+      },
+      onError: () => {
+        for (const id of unreadIds) autoReadState.pending.delete(id);
+      },
+    });
+  }, [data.messages]);
 
   const overflowActions = useMemo<ReaderOverflowAction[]>(
     () => [
@@ -689,24 +701,32 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2">
-              <h1 className="min-w-0 truncate text-base font-semibold tracking-tight">
-                {data.thread.subject || "(no subject)"}
-              </h1>
-              {threadLabels.map((label) => (
-                <LabelBadge key={label.id} label={label} />
-              ))}
+                <h1 className="min-w-0 truncate text-base font-semibold tracking-tight">
+                  {data.thread.subject || "(no subject)"}
+                </h1>
+                {threadLabels.map((label) => (
+                  <LabelBadge key={label.id} label={label} />
+                ))}
               </div>
               <div className="truncate text-2xs text-muted-foreground">
                 {data.thread.message_count} messages · {data.thread.unread_count} unread
-                {data.thread.participants.some((participant) => participant.name?.trim()) ? " · " : ""}
+                {data.thread.participants.some((participant) => participant.name?.trim())
+                  ? " · "
+                  : ""}
                 {data.thread.participants
-                  .flatMap((participant) => (participant.name?.trim() ? [participant.name.trim()] : []))
+                  .flatMap((participant) =>
+                    participant.name?.trim() ? [participant.name.trim()] : [],
+                  )
                   .slice(0, 4)
                   .join(", ")}
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5" role="toolbar" aria-label="Message actions">
+          <div
+            className="flex shrink-0 items-center gap-0.5"
+            role="toolbar"
+            aria-label="Message actions"
+          >
             <ReaderActionButton
               icon={Reply}
               label="Reply"
@@ -1044,20 +1064,10 @@ function ThreadMessage({
           ) : null}
         </time>
       </div>
-      {calendar && (
-        <InviteCard
-          messageId={message.id}
-          threadId={threadId}
-          metadata={calendar}
-        />
-      )}
+      {calendar && <InviteCard messageId={message.id} threadId={threadId} metadata={calendar} />}
       <div className="pb-6 text-[15px] leading-7">
         {html ? (
-          <MessageBody
-            key={message.id}
-            html={html}
-            theme={emailHtmlTheme}
-          />
+          <MessageBody key={message.id} html={html} theme={emailHtmlTheme} />
         ) : (
           <LinkifiedPre text={plain || "No readable body."} />
         )}

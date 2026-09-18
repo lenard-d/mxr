@@ -53,6 +53,12 @@ describe("toast preferences", () => {
     });
   });
 
+  test("stores a dedicated preference for read-state confirmations", () => {
+    useUiPrefs.getState().setToastPreference("readState", false);
+
+    expect(useUiPrefs.getState().toastPreferences.readState).toBe(false);
+  });
+
   test("rehydrates shortcut overrides but rejects malformed or colliding values", async () => {
     window.localStorage.setItem(
       "mxr.uiPrefs",

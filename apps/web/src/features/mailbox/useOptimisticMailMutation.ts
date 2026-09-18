@@ -333,8 +333,7 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
       return { ...context, payload: resolvedPayload };
     },
     onError: (error, input, context) => {
-      const resolvedPayload =
-        context?.payload ?? normalizeMutationInput(input, payload).payload;
+      const resolvedPayload = context?.payload ?? normalizeMutationInput(input, payload).payload;
       restore(qc, context);
       const reauthAccount = findReauthableAccount(error);
       toast.error(`${actionLabel(action, resolvedPayload)} failed`, {
@@ -359,10 +358,12 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
       const count = response.result?.succeeded ?? messageIds.length;
       const label = actionLabel(action, resolvedPayload);
       const mutationId = response.result?.mutation_id;
+      const readStateClass =
+        action === "read" || action === "unread" ? "toast-category-read-state" : undefined;
       if (mutationId) {
         useUndo.getState().setLastMutationId(mutationId);
         toast.success(`${label} ${count}`, {
-          className: "toast-category-undo",
+          className: readStateClass ?? "toast-category-undo",
           duration: UNDO_TOAST_DURATION_MS,
           description: "z to undo",
           action: {
@@ -372,6 +373,8 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
             },
           },
         });
+      } else if (readStateClass) {
+        toast.success(`${label} ${count}`, { className: readStateClass });
       } else {
         toast.success(`${label} ${count}`);
       }

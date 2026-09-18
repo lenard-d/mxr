@@ -1,16 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRouterState, useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { MailboxList } from "./MailboxList";
+import { useMailboxStatusFilter } from "./mailboxStatusFilterStore";
 import { SyncProgressBanner } from "./SyncProgressBanner";
 import { MailboxStatusFilter } from "./MailboxStatusFilter";
-import {
-  filterMailboxGroups,
-  type MailboxStatusFilter as MailboxStatusFilterValue,
-} from "./statusFilter";
+import { filterMailboxGroups } from "./statusFilter";
 import { useMailboxQuery } from "./useMailboxQuery";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -30,7 +28,8 @@ export function MailboxRoute() {
   const activeThreadId = location?.threadId;
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
-  const [statusFilter, setStatusFilter] = useState<MailboxStatusFilterValue>("all");
+  const statusFilter = useMailboxStatusFilter((state) => state.value);
+  const setStatusFilter = useMailboxStatusFilter((state) => state.setValue);
   const mailbox = useMailboxQuery();
   const sync = useMutation({
     mutationFn: () => apiFetch<{ accepted?: boolean }>("/api/v1/mail/sync", { method: "POST" }),

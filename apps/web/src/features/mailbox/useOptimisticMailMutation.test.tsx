@@ -154,7 +154,7 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
     });
 
     const after = client.getQueryData(infiniteKey) as {
-      pages: typeof baseMailbox[];
+      pages: (typeof baseMailbox)[];
       pageParams: number[];
     };
     expect(after.pages[0]?.mailbox.groups[0]?.rows.map((row) => row.id)).toEqual(["m2", "m3"]);
@@ -312,5 +312,24 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
       to: "/accounts/$key",
       params: { key: "account-1" },
     });
+  });
+
+  test("classifies read-state confirmations separately from other success toasts", async () => {
+    api.markReadMessages.mockResolvedValue({
+      ...mutationSuccess(1),
+      result: { ...mutationSuccess(1).result, mutation_id: "mutation-read-1" },
+    });
+    const { result } = renderHook(() => useOptimisticMailMutation("read"), {
+      wrapper: wrapper(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(["m1"]);
+    });
+
+    expect(toast.success).toHaveBeenCalledWith(
+      "Marked read 1",
+      expect.objectContaining({ className: "toast-category-read-state" }),
+    );
   });
 });

@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MailboxList } from "./MailboxList";
@@ -71,7 +71,9 @@ describe("MailboxList keyboard selection", () => {
   test("selects all visible rows with ctrl-a and clears with escape", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
 
     fireEvent.keyDown(window, { key: "a", ctrlKey: true });
 
@@ -85,7 +87,9 @@ describe("MailboxList keyboard selection", () => {
   test("extends selection from the last selected row with shift-x", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
 
     fireEvent.keyDown(window, { key: "x" });
     fireEvent.keyDown(window, { key: "j" });
@@ -97,7 +101,9 @@ describe("MailboxList keyboard selection", () => {
   test("keeps keyboard focus on the same message when rows shift", async () => {
     const { rerender } = render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
 
     fireEvent.keyDown(window, { key: "j" });
 
@@ -125,7 +131,9 @@ describe("MailboxList keyboard selection", () => {
   test("jumps to the top with gg and bottom with G", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
 
     fireEvent.keyDown(window, { key: "G", shiftKey: true });
     fireEvent.keyDown(window, { key: "x" });
@@ -150,7 +158,9 @@ describe("MailboxList keyboard selection", () => {
       />,
     );
 
-    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
 
     fireEvent.keyDown(window, { key: "j" });
 
@@ -169,11 +179,21 @@ describe("MailboxList keyboard selection", () => {
       />,
     );
 
-    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
 
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(router.navigate).toHaveBeenCalledWith({ to: "/m/inbox" });
+  });
+
+  test("loads another page when the active filter leaves the loaded rows empty", async () => {
+    const onLoadMore = vi.fn<() => void>();
+
+    render(<MailboxList groups={[]} mailboxPath="/m/inbox" hasMore onLoadMore={onLoadMore} />);
+
+    await waitFor(() => expect(onLoadMore).toHaveBeenCalledOnce());
   });
 
   test("shows attachment status in the mailbox row", async () => {
@@ -229,7 +249,9 @@ describe("MailboxList keyboard selection", () => {
   test("r marks the selected rows read and u marks the focused row unread", async () => {
     render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
 
-    expect(await screen.findByRole("checkbox", { name: /select all messages in view/i })).toBeVisible();
+    expect(
+      await screen.findByRole("checkbox", { name: /select all messages in view/i }),
+    ).toBeVisible();
 
     fireEvent.keyDown(window, { key: "r" });
     expect(mutation.mutate).toHaveBeenCalledWith(["msg-1"]);
@@ -308,7 +330,30 @@ describe("MailboxList keyboard selection", () => {
     fireEvent.mouseEnter(screen.getByRole("article"));
 
     expect(checkbox).toHaveAttribute("data-state", "checked");
+    expect(checkbox).toHaveClass("mailbox-checkbox-selected");
     expect(checkbox.querySelector("svg")).toBeInTheDocument();
+  });
+
+  test("exposes row actions through a dedicated mobile menu", async () => {
+    render(
+      <MailboxRow
+        row={rows[0]!}
+        selected={false}
+        focused={false}
+        onOpen={vi.fn<() => void>()}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "More message actions" });
+    expect(trigger).toHaveClass("mailbox-row-mobile-action-trigger", "md:hidden");
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+
+    expect(await screen.findByRole("menuitem", { name: "Mark unread" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Archive" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Trash" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Spam" })).toBeVisible();
   });
 
   test("keeps a visible square checkbox and a single-line subject/snippet lane", () => {
@@ -444,7 +489,9 @@ describe("MailboxRow readOnly + trailingAction", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const remove = screen.getByRole("button", { name: "Remove" });
+    expect(remove.parentElement).toHaveClass("mailbox-row-custom-action");
+    fireEvent.click(remove);
     expect(onAction).toHaveBeenCalledWith("msg-1");
     expect(onOpen).not.toHaveBeenCalled();
   });

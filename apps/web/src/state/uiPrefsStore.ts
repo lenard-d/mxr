@@ -36,7 +36,7 @@ export type SidebarFeature =
   | "jobs"
   | "diagnostics";
 export type SidebarVisibility = Record<SidebarFeature, boolean>;
-export type ToastCategory = "errors" | "success" | "info" | "undo" | "sent";
+export type ToastCategory = "errors" | "success" | "info" | "undo" | "sent" | "readState";
 export type ToastPreferences = Record<ToastCategory, boolean>;
 /** Undo-send window in seconds; 0 sends immediately. */
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
@@ -86,13 +86,14 @@ export const defaultSidebarVisibility: SidebarVisibility = {
 
 const themeValues = new Set(["midnight", "light", "eclipse", "paper", "system"]);
 const densityValues = new Set(["compact", "regular", "comfortable"]);
-const toastCategories: ToastCategory[] = ["errors", "success", "info", "undo", "sent"];
+const toastCategories: ToastCategory[] = ["errors", "success", "info", "undo", "sent", "readState"];
 export const defaultToastPreferences: ToastPreferences = {
   errors: true,
   success: true,
   info: true,
   undo: true,
   sent: true,
+  readState: true,
 };
 
 export function isTheme(value: unknown): value is Theme {

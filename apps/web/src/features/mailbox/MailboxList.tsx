@@ -170,6 +170,11 @@ export function MailboxList({
   }, [flat.length, hasMore, loadingMore, onLoadMore, virtualItems]);
 
   useEffect(() => {
+    if (rows.length > 0 || !hasMore || loadingMore || !onLoadMore) return;
+    onLoadMore();
+  }, [hasMore, loadingMore, onLoadMore, rows.length]);
+
+  useEffect(() => {
     if (!focusedRow) return;
     const flatIndex = flat.findIndex(
       (item) => item.kind === "row" && item.row.id === focusedRow.id,

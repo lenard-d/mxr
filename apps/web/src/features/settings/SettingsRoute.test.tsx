@@ -9,6 +9,7 @@ import {
   ComposeSettingsSection,
   KeybindingsSection,
   LlmSettingsSection,
+  NotificationSettingsSection,
   SidebarSettingsSection,
 } from "./SettingsRoute";
 import { defaultShortcutPreferences } from "@/lib/keybindings";
@@ -213,6 +214,30 @@ describe("SidebarSettingsSection", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Show Reply queue in sidebar" }));
 
     expect(useUiPrefs.getState().sidebarVisibility["reply-queue"]).toBe(false);
+  });
+});
+
+describe("NotificationSettingsSection", () => {
+  beforeEach(() => {
+    useUiPrefs.setState({
+      toastPreferences: {
+        errors: true,
+        success: true,
+        info: true,
+        undo: true,
+        sent: true,
+        readState: true,
+      },
+    });
+  });
+
+  test("can disable read-state confirmations independently", () => {
+    renderWithQueryClient(<NotificationSettingsSection />);
+
+    const toggle = screen.getByRole("switch", { name: "Read and unread changes" });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(useUiPrefs.getState().toastPreferences.readState).toBe(false);
   });
 });
 

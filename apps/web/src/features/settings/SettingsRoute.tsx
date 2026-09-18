@@ -204,20 +204,10 @@ function SettingsSection({ section }: { section: string }) {
   const density = useUiPrefs((state) => state.density);
   const emailHtmlTheme = useUiPrefs((state) => state.emailHtmlTheme);
   const readerLayout = useUiPrefs((state) => state.readerLayout);
-  const notificationsEnabled = useUiPrefs((state) => state.notificationsEnabled);
-  const notifyAllNewMail = useUiPrefs((state) => state.notifyAllNewMail);
-  const toastPreferences = useUiPrefs((state) => state.toastPreferences);
-  const vipAllowlist = useUiPrefs((state) => state.vipAllowlist);
   const setTheme = useUiPrefs((state) => state.setTheme);
   const setDensity = useUiPrefs((state) => state.setDensity);
   const setEmailHtmlTheme = useUiPrefs((state) => state.setEmailHtmlTheme);
   const setReaderLayout = useUiPrefs((state) => state.setReaderLayout);
-  const setNotificationsEnabled = useUiPrefs((state) => state.setNotificationsEnabled);
-  const setNotifyAllNewMail = useUiPrefs((state) => state.setNotifyAllNewMail);
-  const setToastPreference = useUiPrefs((state) => state.setToastPreference);
-  const addVip = useUiPrefs((state) => state.addVip);
-  const removeVip = useUiPrefs((state) => state.removeVip);
-  const [vip, setVip] = useState("");
 
   if (section === "theme")
     return (
@@ -262,91 +252,8 @@ function SettingsSection({ section }: { section: string }) {
         />
       </Shell>
     );
-  if (section === "compose")
-    return <ComposeSettingsSection />;
-  if (section === "notifications")
-    return (
-      <Shell title="Notifications">
-        <div className="space-y-4">
-          <Toggle
-            label="Browser notifications"
-            checked={notificationsEnabled}
-            onChange={async (checked) => {
-              if (checked && Notification.permission === "default")
-                await Notification.requestPermission();
-              setNotificationsEnabled(checked);
-            }}
-          />
-          <Toggle
-            label="Notify on all new mail"
-            checked={notifyAllNewMail}
-            onChange={setNotifyAllNewMail}
-          />
-          <Card className="space-y-3 p-4">
-            <div>
-              <h2 className="text-sm font-semibold">In-app toasts</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Choose which confirmations appear. Actions and undo state still work when hidden.
-              </p>
-            </div>
-            <Toggle
-              label="Errors"
-              checked={toastPreferences.errors}
-              onChange={(enabled) => setToastPreference("errors", enabled)}
-            />
-            <Toggle
-              label="Undo actions"
-              checked={toastPreferences.undo}
-              onChange={(enabled) => setToastPreference("undo", enabled)}
-            />
-            <Toggle
-              label="Sent and scheduled"
-              checked={toastPreferences.sent}
-              onChange={(enabled) => setToastPreference("sent", enabled)}
-            />
-            <Toggle
-              label="Other confirmations"
-              checked={toastPreferences.success}
-              onChange={(enabled) => setToastPreference("success", enabled)}
-            />
-            <Toggle
-              label="Info and warnings"
-              checked={toastPreferences.info}
-              onChange={(enabled) => setToastPreference("info", enabled)}
-            />
-          </Card>
-          <div className="space-y-2">
-            <Label>VIP allowlist</Label>
-            <div className="flex gap-2">
-              <Input
-                value={vip}
-                onChange={(event) => setVip(event.target.value)}
-                placeholder="alice@example.com or @acme.com"
-              />
-              <Button
-                onClick={() => {
-                  addVip(vip.trim());
-                  setVip("");
-                }}
-                disabled={!vip.trim()}
-              >
-                Add
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {vipAllowlist.map((item) => (
-                <Badge key={item} variant="outline" className="py-1">
-                  {item}
-                  <button onClick={() => removeVip(item)}>
-                    <Trash2 className="size-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Shell>
-    );
+  if (section === "compose") return <ComposeSettingsSection />;
+  if (section === "notifications") return <NotificationSettingsSection />;
   if (section === "keybindings") return <KeybindingsSection />;
   if (section === "voice") return <VoiceSettingsSection />;
   if (section === "llm") return <LlmSettingsSection />;
@@ -370,6 +277,107 @@ function SettingsSection({ section }: { section: string }) {
   return (
     <Shell title="Settings">
       <p className="text-xs text-muted-foreground">Unknown section.</p>
+    </Shell>
+  );
+}
+
+export function NotificationSettingsSection() {
+  const notificationsEnabled = useUiPrefs((state) => state.notificationsEnabled);
+  const notifyAllNewMail = useUiPrefs((state) => state.notifyAllNewMail);
+  const toastPreferences = useUiPrefs((state) => state.toastPreferences);
+  const vipAllowlist = useUiPrefs((state) => state.vipAllowlist);
+  const setNotificationsEnabled = useUiPrefs((state) => state.setNotificationsEnabled);
+  const setNotifyAllNewMail = useUiPrefs((state) => state.setNotifyAllNewMail);
+  const setToastPreference = useUiPrefs((state) => state.setToastPreference);
+  const addVip = useUiPrefs((state) => state.addVip);
+  const removeVip = useUiPrefs((state) => state.removeVip);
+  const [vip, setVip] = useState("");
+
+  return (
+    <Shell title="Notifications">
+      <div className="space-y-4">
+        <Toggle
+          label="Browser notifications"
+          checked={notificationsEnabled}
+          onChange={async (checked) => {
+            if (checked && Notification.permission === "default")
+              await Notification.requestPermission();
+            setNotificationsEnabled(checked);
+          }}
+        />
+        <Toggle
+          label="Notify on all new mail"
+          checked={notifyAllNewMail}
+          onChange={setNotifyAllNewMail}
+        />
+        <Card className="space-y-3 p-4">
+          <div>
+            <h2 className="text-sm font-semibold">In-app toasts</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Choose which confirmations appear. Actions and undo state still work when hidden.
+            </p>
+          </div>
+          <Toggle
+            label="Errors"
+            checked={toastPreferences.errors}
+            onChange={(enabled) => setToastPreference("errors", enabled)}
+          />
+          <Toggle
+            label="Undo actions"
+            checked={toastPreferences.undo}
+            onChange={(enabled) => setToastPreference("undo", enabled)}
+          />
+          <Toggle
+            label="Sent and scheduled"
+            checked={toastPreferences.sent}
+            onChange={(enabled) => setToastPreference("sent", enabled)}
+          />
+          <Toggle
+            label="Read and unread changes"
+            checked={toastPreferences.readState}
+            onChange={(enabled) => setToastPreference("readState", enabled)}
+          />
+          <Toggle
+            label="Other confirmations"
+            checked={toastPreferences.success}
+            onChange={(enabled) => setToastPreference("success", enabled)}
+          />
+          <Toggle
+            label="Info and warnings"
+            checked={toastPreferences.info}
+            onChange={(enabled) => setToastPreference("info", enabled)}
+          />
+        </Card>
+        <div className="space-y-2">
+          <Label>VIP allowlist</Label>
+          <div className="flex gap-2">
+            <Input
+              value={vip}
+              onChange={(event) => setVip(event.target.value)}
+              placeholder="alice@example.com or @acme.com"
+            />
+            <Button
+              onClick={() => {
+                addVip(vip.trim());
+                setVip("");
+              }}
+              disabled={!vip.trim()}
+            >
+              Add
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {vipAllowlist.map((item) => (
+              <Badge key={item} variant="outline" className="py-1">
+                {item}
+                <button onClick={() => removeVip(item)}>
+                  <Trash2 className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
     </Shell>
   );
 }
@@ -1222,8 +1230,8 @@ export function KeybindingsSection() {
           <div>
             <h2 className="text-sm font-semibold">Global shortcuts</h2>
             <p className="text-xs text-muted-foreground">
-              These work across mxr. Secondary aliases remain available while an action is enabled. Leave
-              a field blank to disable that action.
+              These work across mxr. Secondary aliases remain available while an action is enabled.
+              Leave a field blank to disable that action.
             </p>
           </div>
           <div className="grid gap-2">
@@ -1342,7 +1350,6 @@ function ShortcutEditor({
     </div>
   );
 }
-
 
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   return (

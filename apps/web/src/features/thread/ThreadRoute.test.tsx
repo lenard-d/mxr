@@ -379,7 +379,7 @@ describe("ThreadRoute", () => {
     expect(screen.queryByRole("button", { name: "Load remote images" })).not.toBeInTheDocument();
   });
 
-  test("does not schedule mark-read while a split preview keeps mailbox focus", async () => {
+  test("marks an unread thread read when it opens in split preview", async () => {
     useMailboxPane.setState({
       activePane: "mailbox",
       sidebarIndex: 0,
@@ -392,19 +392,35 @@ describe("ThreadRoute", () => {
         index === 0 ? Object.assign({}, message, { unread: true }) : message,
       ),
     });
-    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    renderWithQueryClient(<ThreadRoute />);
 
-    try {
-      renderWithQueryClient(<ThreadRoute />);
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+    await waitFor(() => expect(api.markReadMessages).toHaveBeenCalledWith(["msg-1"], true));
+  });
 
-      expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
-      expect(
-        setTimeoutSpy.mock.calls.some(([, delay]) => delay === 2000),
-      ).toBe(false);
-      expect(api.markReadMessages).not.toHaveBeenCalled();
-    } finally {
-      setTimeoutSpy.mockRestore();
-    }
+  test("retries auto-mark-read after a failed mutation and a refreshed unread thread", async () => {
+    const firstMessage = thread.messages[0]!;
+    const unreadThread = {
+      ...thread,
+      thread: { ...thread.thread, unread_count: 1 },
+      messages: [{ ...firstMessage, unread: true }, ...thread.messages.slice(1)],
+    };
+    const firstUnreadMessage = unreadThread.messages[0]!;
+    api.fetchThread.mockResolvedValueOnce(unreadThread).mockResolvedValueOnce({
+      ...unreadThread,
+      messages: [
+        { ...firstUnreadMessage, snippet: "refreshed after failure" },
+        ...unreadThread.messages.slice(1),
+      ],
+    });
+    api.markReadMessages
+      .mockRejectedValueOnce(new Error("temporary provider failure"))
+      .mockResolvedValueOnce({ ok: true, result: { succeeded: 1 } });
+
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+    await waitFor(() => expect(api.markReadMessages).toHaveBeenCalledTimes(2));
   });
 
   test("keeps secondary reader actions in the overflow menu", async () => {
@@ -453,10 +469,7 @@ describe("ThreadRoute", () => {
     expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
 
     expect(screen.getByRole("button", { name: "Reply" })).toHaveAttribute("title", "Reply (r)");
-    expect(screen.getByRole("button", { name: "Forward" })).toHaveAttribute(
-      "title",
-      "Forward (f)",
-    );
+    expect(screen.getByRole("button", { name: "Forward" })).toHaveAttribute("title", "Forward (f)");
     expect(screen.getByRole("button", { name: "Back to mailbox" })).toHaveAttribute(
       "title",
       "Back to mailbox",

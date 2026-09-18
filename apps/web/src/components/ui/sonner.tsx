@@ -16,6 +16,7 @@ export function Toaster() {
       data-show-info-toasts={toastPreferences.info}
       data-show-undo-toasts={toastPreferences.undo}
       data-show-sent-toasts={toastPreferences.sent}
+      data-show-read-state-toasts={toastPreferences.readState}
       position="top-right"
       gap={8}
       visibleToasts={3}
