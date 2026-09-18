@@ -26,6 +26,8 @@ import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useSelection } from "@/state/selectionStore";
 import { useUndo } from "@/state/undoStore";
 
+const UNDO_TOAST_DURATION_MS = 5_000;
+
 /** Undo a mutation by id and refresh every mail surface. Shared by the
  * success-toast Undo button and the global `z` shortcut. */
 export function performUndo(qc: QueryClient, mutationId: string): Promise<void> {
@@ -361,7 +363,7 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
         useUndo.getState().setLastMutationId(mutationId);
         toast.success(`${label} ${count}`, {
           className: "toast-category-undo",
-          duration: 60_000,
+          duration: UNDO_TOAST_DURATION_MS,
           description: "z to undo",
           action: {
             label: "Undo",

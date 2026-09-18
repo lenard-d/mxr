@@ -35,7 +35,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           className={
             collapsed
               ? "size-10 justify-center p-0"
-              : "h-9 w-full justify-start gap-2 px-2 text-left"
+              : "h-10 w-full justify-start gap-2.5 px-2.5 text-left"
           }
           aria-label="Account switcher"
         >

@@ -106,13 +106,16 @@ export function RuleEditorRoute() {
       const mutationId = response.result?.mutation_id;
       if (mutationId) {
         toast.success(`Applied rule to ${count} messages`, {
-          duration: 60_000,
+          className: "toast-category-undo",
+          duration: 6_000,
           action: {
             label: "Undo",
             onClick: () => {
               undoMutation(mutationId)
                 .then(() => {
-                  toast.success("Rule application undone");
+                  toast.success("Rule application undone", {
+                    className: "toast-category-undo",
+                  });
                   void qc.invalidateQueries({ queryKey: ["mailbox"] });
                   void qc.invalidateQueries({ queryKey: shellKey });
                 })

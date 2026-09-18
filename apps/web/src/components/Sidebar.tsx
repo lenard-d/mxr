@@ -254,12 +254,12 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
       data-mobile-navigation={mobile ? "true" : undefined}
       aria-label="Mailbox sidebar"
     >
-      <div className={cn("border-b border-sidebar-border p-2", mobile && "pr-14")}>
+      <div className={cn("border-b border-sidebar-border px-2.5 py-2.5", mobile && "pr-14")}>
         <AccountSwitcher collapsed={collapsed} />
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="px-2 py-3">
+        <div className="px-2.5 py-3.5">
           {sections.map((section, sectionIndex) => (
             <SidebarSection
               key={section.label}
@@ -294,7 +294,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
 
       <div
         className={cn(
-          "border-t border-sidebar-border px-2 py-2",
+          "border-t border-sidebar-border px-2.5 py-2.5",
           collapsed ? "flex flex-col items-center gap-1" : "flex items-center gap-1",
           mobile && "pb-[max(0.5rem,env(safe-area-inset-bottom))]",
         )}
@@ -410,7 +410,7 @@ function SidebarResizeHandle({ width, onChange, onReset }: SidebarResizeHandlePr
       aria-valuetext={`${width} pixels`}
       tabIndex={0}
       data-testid="sidebar-resize-handle"
-      className="absolute inset-y-0 right-0 z-20 flex w-2 cursor-col-resize touch-none items-center justify-center border-0 bg-transparent p-0 outline-none transition-colors hover:bg-sidebar-primary/20 focus-visible:bg-sidebar-primary/30"
+      className="absolute inset-y-0 right-0 z-20 flex w-2 cursor-ew-resize touch-none items-center justify-center border-0 bg-transparent p-0 outline-none transition-colors hover:bg-sidebar-primary/20 focus-visible:bg-sidebar-primary/30"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -470,7 +470,7 @@ function SidebarSection({ label, collapsed, mobile, className, children }: Secti
       {!collapsed && (
         <div
           className={cn(
-            "mb-1 px-2 text-2xs font-semibold uppercase tracking-wide text-sidebar-foreground/60",
+            "mb-1 px-2.5 text-2xs font-semibold uppercase tracking-wide text-sidebar-foreground/60",
             mobile && "mt-1",
           )}
         >
@@ -514,7 +514,7 @@ function SidebarLink({
           ? "min-h-10 px-3 py-2 text-sm"
           : collapsed
             ? "size-10 justify-center p-0 text-xs"
-            : "px-2 py-1.5 text-xs",
+            : "px-2.5 py-2 text-xs",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
