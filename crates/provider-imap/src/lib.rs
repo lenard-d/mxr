@@ -238,9 +238,11 @@ impl ImapProvider {
         if capabilities.condstore && !capabilities.qresync {
             enabled.push("CONDSTORE");
         }
-        if capabilities.utf8_accept {
-            enabled.push("UTF8=ACCEPT");
-        }
+        // `mxr-async-imap` currently parses quoted strings as ASCII. Gmail
+        // switches LIST mailbox names to UTF-8 after this capability is
+        // enabled, so a localized folder name makes the response
+        // unparseable. Keep the capability in the cursor snapshot, but do
+        // not activate it until the parser can consume UTF-8 mailbox names.
         enabled
     }
 
@@ -1863,6 +1865,20 @@ mod tests {
         )
     }
 
+    #[test]
+    fn does_not_enable_utf8_accept_for_the_ascii_only_imap_parser() {
+        let capabilities = ImapCapabilities {
+            condstore: true,
+            utf8_accept: true,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            ImapProvider::enableable_capabilities(&capabilities),
+            vec!["CONDSTORE"]
+        );
+    }
+
     fn make_fetched_message(uid: u32, subject: &str, from_email: &str) -> FetchedMessage {
         // Build raw RFC822 message for full body parsing
         let raw = format!(
@@ -2833,7 +2849,7 @@ mod tests {
             .any(|message| message.envelope.subject == "Brand new"));
 
         let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"ENABLE QRESYNC UTF8=ACCEPT".to_string()));
+        assert!(commands.contains(&"ENABLE QRESYNC".to_string()));
         assert!(commands.contains(&"SELECT INBOX QRESYNC".to_string()));
     }
 
