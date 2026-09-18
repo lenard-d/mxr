@@ -54,7 +54,7 @@ describe("HtmlDraftNotice preview", () => {
     expect(srcDoc).toContain("hello");
     const preview = new DOMParser().parseFromString(srcDoc, "text/html");
     const image = preview.querySelector('img[alt="pixel"]');
-    expect(image).toHaveAttribute("src", "https://tracker.example.com/pixel.png?id=42");
+    expect(image?.getAttribute("src")).toBe("https://tracker.example.com/pixel.png?id=42");
     expect(
       screen.queryByRole("button", { name: "Load remote images" }),
     ).not.toBeInTheDocument();

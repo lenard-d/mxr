@@ -309,7 +309,9 @@ describe("ComposeRoute opening a saved draft that has an HTML body", () => {
     const srcDoc = frame.getAttribute("srcdoc") ?? "";
     expect(srcDoc).toContain("Ship on Friday.");
     const preview = new DOMParser().parseFromString(srcDoc, "text/html");
-    expect(preview.querySelector('img[src^="http"]')).toBeNull();
+    expect(preview.querySelector('img[src^="http"]')?.getAttribute("src")).toBe(
+      "https://tracker.example.com/p.png",
+    );
   });
 
   test("still offers a retry for a failure that might be transient", async () => {
