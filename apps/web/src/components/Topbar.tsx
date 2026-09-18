@@ -6,6 +6,7 @@ import { MobileNavigation } from "@/components/MobileNavigation";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/features/search/SearchInput";
 import { fetchAdminStatus } from "@/features/diagnostics/api";
+import { useMailboxQuery } from "@/features/mailbox/useMailboxQuery";
 import { useModals } from "@/state/modalStore";
 
 export function Topbar() {
@@ -25,8 +26,9 @@ export function Topbar() {
   return (
     <div className="flex min-w-0 w-full items-center gap-2 sm:gap-3">
       <MobileNavigation />
-      <div className="hidden min-w-0 flex-1 sm:block">
+      <div className="hidden min-w-0 flex-1 items-center gap-3 sm:flex">
         <Breadcrumb path={path} />
+        {isMailboxPath(path) ? <MailboxCounts /> : null}
       </div>
 
       {isDemo ? <DemoChip /> : null}
@@ -36,7 +38,7 @@ export function Topbar() {
         <Button
           size="sm"
           variant="default"
-          className="compose-primary h-10 w-10 px-2.5 py-2 shadow-sm sm:h-9 sm:w-auto sm:gap-2 sm:px-3.5 sm:py-1.5"
+          className="compose-primary h-10 w-10 shadow-sm sm:h-9 sm:w-auto sm:gap-2"
           onClick={() => setComposeOpen(true)}
           aria-label="Compose new email"
         >
@@ -44,6 +46,23 @@ export function Topbar() {
           <span className="hidden sm:inline">Compose</span>
         </Button>
       </div>
+    </div>
+  );
+}
+
+function isMailboxPath(path: string): boolean {
+  return path.startsWith("/mail/") || path.startsWith("/m/");
+}
+
+function MailboxCounts() {
+  const mailbox = useMailboxQuery();
+  const counts = mailbox.data?.mailbox.counts;
+  if (!counts) return null;
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 font-mono text-2xs text-muted-foreground">
+      <span>{counts.unread ?? 0} unread</span>
+      <span aria-hidden="true">·</span>
+      <span>{counts.total ?? 0} total</span>
     </div>
   );
 }

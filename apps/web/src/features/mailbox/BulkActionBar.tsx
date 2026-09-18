@@ -1,5 +1,15 @@
-import { Archive, CheckCheck, Clock, Mail, ShieldAlert, Star, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import {
+  Archive,
+  CheckCheck,
+  Clock,
+  Mail,
+  RefreshCw,
+  ShieldAlert,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { SnoozeDialog } from "./SnoozeDialog";
 import type { MessageRowView } from "./types";
@@ -31,9 +41,17 @@ const confirmBeforeBulk = new Set<MailAction>(["archive", "trash", "spam"]);
 interface BulkActionBarProps {
   /** Rows make the master checkbox represent the current view, not all mail. */
   rows?: MessageRowView[];
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  trailing?: ReactNode;
 }
 
-export function BulkActionBar({ rows }: BulkActionBarProps = {}) {
+export function BulkActionBar({
+  rows,
+  onRefresh,
+  refreshing = false,
+  trailing,
+}: BulkActionBarProps = {}) {
   const ids = useSelection((state) => state.ids);
   const clear = useSelection((state) => state.clear);
   const selectMany = useSelection((state) => state.selectMany);
@@ -65,22 +83,23 @@ export function BulkActionBar({ rows }: BulkActionBarProps = {}) {
               aria-label={
                 allLoadedSelected ? "Deselect all messages in view" : "Select all messages in view"
               }
-              aria-describedby="mailbox-selection-status"
+              aria-describedby={selected.length > 0 ? "mailbox-selection-status" : undefined}
+              disabled={rows.length === 0}
               data-testid="mailbox-master-checkbox"
               className="mailbox-checkbox size-4 rounded-none"
             />
           </div>
         ) : null}
-        <div
-          id="mailbox-selection-status"
-          role="status"
-          aria-live="polite"
-          className="mr-1 shrink-0 font-mono text-2xs text-muted-foreground"
-        >
-          {selected.length > 0 ? `${selected.length} selected` : null}
-        </div>
         {selected.length > 0 ? (
           <>
+            <div
+              id="mailbox-selection-status"
+              role="status"
+              aria-live="polite"
+              className="mr-1 shrink-0 font-mono text-2xs text-muted-foreground"
+            >
+              {selected.length} selected
+            </div>
             <span className="mx-0.5 h-5 w-px bg-border" aria-hidden="true" />
             {actions.map((item) => (
               <BulkButton
@@ -103,7 +122,6 @@ export function BulkActionBar({ rows }: BulkActionBarProps = {}) {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="ml-auto"
               title="Clear selection"
               aria-label="Clear selection"
               onClick={clear}
@@ -111,15 +129,22 @@ export function BulkActionBar({ rows }: BulkActionBarProps = {}) {
               <X className="size-3.5" />
             </Button>
           </>
+        ) : onRefresh ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title="Fetch new mail"
+            aria-label="Fetch new mail"
+            onClick={onRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={refreshing ? "size-4 animate-spin" : "size-4"} />
+          </Button>
         ) : null}
+        {trailing ? <div className="ml-auto flex shrink-0 items-center">{trailing}</div> : null}
       </div>
       {snoozeOpen ? (
-        <SnoozeDialog
-          open
-          messageIds={selected}
-          onOpenChange={setSnoozeOpen}
-          onSnoozed={clear}
-        />
+        <SnoozeDialog open messageIds={selected} onOpenChange={setSnoozeOpen} onSnoozed={clear} />
       ) : null}
     </>
   );

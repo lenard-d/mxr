@@ -201,6 +201,7 @@
   border-color: hsl(var(--foreground));
   background: hsl(var(--foreground));
   color: hsl(var(--background));
+  padding-inline: 1.125rem;
 }
 
 .compose-primary:hover {
@@ -208,13 +209,51 @@
   color: hsl(var(--background));
 }
 
+.mail-search-trigger {
+  padding-inline: 1.125rem;
+}
+
+[data-slot="switch"].settings-switch {
+  border-width: 2px;
+  border-style: solid;
+  border-color: hsl(var(--destructive));
+  background-color: hsl(var(--destructive) / 0.38);
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--destructive) / 0.24),
+    0 0 0 1px hsl(var(--background) / 0.5);
+}
+
+[data-slot="switch"].settings-switch[data-state="checked"] {
+  border-color: hsl(var(--success));
+  background-color: hsl(var(--success) / 0.72);
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--success) / 0.3),
+    0 0 0 1px hsl(var(--background) / 0.5);
+}
+
+[data-slot="switch"] [data-slot="switch-thumb"] {
+  background-color: hsl(var(--foreground));
+  box-shadow:
+    0 1px 2px hsl(var(--background) / 0.65),
+    0 0 0 1px hsl(var(--background) / 0.28);
+}
+
+@media (max-width: 639px) {
+  .mail-search-trigger {
+    padding-inline: 0.875rem;
+  }
+
+  .compose-primary {
+    padding-inline: 0.75rem;
+  }
+}
+
 [data-mailbox-virtual-row="true"]:has(.mailbox-row:hover),
 [data-mailbox-virtual-row="true"]:has(.mailbox-row[data-selected="true"]) {
   z-index: 4;
 }
 
-[data-sonner-toaster][data-show-error-toasts="false"]
-  [data-sonner-toast][data-type="error"],
+[data-sonner-toaster][data-show-error-toasts="false"] [data-sonner-toast][data-type="error"],
 [data-sonner-toaster][data-show-info-toasts="false"]
   [data-sonner-toast]:is([data-type="info"], [data-type="warning"], [data-type="normal"]),
 [data-sonner-toaster][data-show-success-toasts="false"]

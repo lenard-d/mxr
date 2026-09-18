@@ -1,6 +1,8 @@
+import { useMutation } from "@tanstack/react-query";
 import { useRouterState, useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { MailboxList } from "./MailboxList";
 import { SyncProgressBanner } from "./SyncProgressBanner";
@@ -12,6 +14,7 @@ import {
 import { useMailboxQuery } from "./useMailboxQuery";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/api/client";
 import {
   accountKeyFor,
   buildMailInboxPath,
@@ -29,6 +32,11 @@ export function MailboxRoute() {
   const setActivePane = useMailboxPane((state) => state.setActivePane);
   const [statusFilter, setStatusFilter] = useState<MailboxStatusFilterValue>("all");
   const mailbox = useMailboxQuery();
+  const sync = useMutation({
+    mutationFn: () => apiFetch<{ accepted?: boolean }>("/api/v1/mail/sync", { method: "POST" }),
+    onSuccess: () => toast.info("Checking for new mail"),
+    onError: (error) => toast.error("Could not fetch new mail", { description: error.message }),
+  });
 
   useEffect(() => {
     if (!activeThreadId && activePane === "reader") setActivePane("mailbox");
@@ -46,14 +54,16 @@ export function MailboxRoute() {
     );
   }
 
-  if (mailbox.accountResolution.status === "invalid" || mailbox.accountResolution.status === "disabled") {
+  if (
+    mailbox.accountResolution.status === "invalid" ||
+    mailbox.accountResolution.status === "disabled"
+  ) {
     return <AccountUnavailable resolution={mailbox.accountResolution} />;
   }
 
   if (mailbox.isLoading || mailbox.accountResolution.status === "loading") {
     return (
       <div className="flex min-w-0 flex-1 flex-col lg:border-r lg:border-border">
-        <MailboxHeader title="Loading" subtitle="Opening local mailbox" />
         <div className="space-y-0 p-3">
           {Array.from({ length: 12 }, (_, index) => (
             <div key={index} className="mb-2 h-12 animate-pulse rounded-md bg-muted/60" />
@@ -79,19 +89,13 @@ export function MailboxRoute() {
   const accountKey =
     mailbox.accountResolution.status === "resolved"
       ? mailbox.accountResolution.accountKey
-      : location.accountKey ?? "all";
+      : (location.accountKey ?? "all");
   const mailboxPath = mailboxPathFromLocation(location, accountKey);
   const visibleGroups = filterMailboxGroups(data.mailbox.groups, statusFilter);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background lg:border-r lg:border-border">
       <SyncProgressBanner />
-      <MailboxHeader
-        title={data.mailbox.lensLabel}
-        subtitle={`${data.mailbox.counts.unread ?? 0} unread / ${data.mailbox.counts.total ?? 0} total`}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-      />
       <MailboxList
         groups={visibleGroups}
         mailboxPath={mailboxPath}
@@ -102,12 +106,19 @@ export function MailboxRoute() {
         onLoadMore={() => {
           void mailbox.fetchNextPage();
         }}
+        onRefresh={() => sync.mutate()}
+        refreshing={sync.isPending}
+        toolbarEnd={<MailboxStatusFilter value={statusFilter} onChange={setStatusFilter} />}
       />
     </div>
   );
 }
 
-function AccountUnavailable({ resolution }: { resolution: Extract<MailAccountResolution, { status: "invalid" | "disabled" }> }) {
+function AccountUnavailable({
+  resolution,
+}: {
+  resolution: Extract<MailAccountResolution, { status: "invalid" | "disabled" }>;
+}) {
   const navigate = useNavigate();
   const fallback = resolution.fallback;
   const title = resolution.status === "disabled" ? "Account disabled" : "Account not found";
@@ -123,7 +134,9 @@ function AccountUnavailable({ resolution }: { resolution: Extract<MailAccountRes
       description={detail}
       action={
         fallback ? (
-          <Button onClick={() => void navigate({ to: buildMailInboxPath(accountKeyFor(fallback)) })}>
+          <Button
+            onClick={() => void navigate({ to: buildMailInboxPath(accountKeyFor(fallback)) })}
+          >
             Open {fallback.name || fallback.email}
           </Button>
         ) : (
@@ -131,29 +144,5 @@ function AccountUnavailable({ resolution }: { resolution: Extract<MailAccountRes
         )
       }
     />
-  );
-}
-
-function MailboxHeader({
-  title,
-  subtitle,
-  statusFilter,
-  onStatusFilterChange,
-}: {
-  title: string;
-  subtitle: string;
-  statusFilter?: MailboxStatusFilterValue;
-  onStatusFilterChange?: (value: MailboxStatusFilterValue) => void;
-}) {
-  return (
-    <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4">
-      <div className="min-w-0 flex-1">
-        <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
-        <div className="font-mono text-2xs text-muted-foreground">{subtitle}</div>
-      </div>
-      {statusFilter !== undefined && onStatusFilterChange ? (
-        <MailboxStatusFilter value={statusFilter} onChange={onStatusFilterChange} />
-      ) : null}
-    </div>
   );
 }

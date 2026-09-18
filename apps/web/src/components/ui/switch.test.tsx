@@ -14,22 +14,15 @@ describe("Switch", () => {
 
     expect(control).toHaveAttribute("data-state", "unchecked");
     expect(control).toHaveAttribute("aria-checked", "false");
-    expect(control).toHaveClass(
-      "h-5",
-      "w-9",
-      "border-destructive",
-      "bg-destructive/25",
-      "disabled:saturate-50",
-    );
+    expect(control).toHaveAttribute("data-slot", "switch");
+    expect(control).toHaveClass("settings-switch", "h-6", "w-11", "border-2");
     expect(thumb).toHaveClass("size-4");
+    expect(thumb).toHaveAttribute("data-slot", "switch-thumb");
 
     fireEvent.click(control);
 
     expect(control).toHaveAttribute("data-state", "checked");
     expect(control).toHaveAttribute("aria-checked", "true");
-    expect(control).toHaveClass(
-      "data-[state=checked]:border-success",
-      "data-[state=checked]:bg-success/80",
-    );
+    expect(thumb).toHaveClass("data-[state=checked]:translate-x-5");
   });
 });

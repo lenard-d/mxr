@@ -13,19 +13,12 @@ describe("MailboxStatusFilter", () => {
     render(<MailboxStatusFilter value="all" onChange={onChange} />);
 
     expect(screen.getByRole("group", { name: "Filter mailbox by status" })).toBeVisible();
-    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "All",
-      "Unread",
-      "Read",
-      "Starred",
-    ]);
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.getAllByRole("button")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Unread" }));
 
     expect(onChange).toHaveBeenCalledWith("unread");
+    expect(screen.getByRole("button", { name: "Starred" }).querySelector("svg")).toBeVisible();
   });
 });

@@ -1,3 +1,5 @@
+import { List, Mail, MailOpen, Star } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 
 import {
@@ -10,27 +12,37 @@ interface MailboxStatusFilterProps {
   onChange: (value: MailboxStatusFilterValue) => void;
 }
 
+const filterIcons = {
+  all: List,
+  unread: Mail,
+  read: MailOpen,
+  starred: Star,
+} as const;
+
 export function MailboxStatusFilter({ value, onChange }: MailboxStatusFilterProps) {
   return (
     <div
       role="group"
       aria-label="Filter mailbox by status"
-      className="flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto rounded-md border border-border bg-muted/40 p-0.5"
+      className="flex max-w-full shrink-0 items-center gap-1 overflow-x-auto"
     >
       {MAILBOX_STATUS_FILTERS.map((option) => {
         const selected = value === option.value;
+        const Icon = filterIcons[option.value];
         return (
           <Button
             key={option.value}
             type="button"
             variant={selected ? "secondary" : "ghost"}
-            size="xs"
+            size="icon-sm"
             aria-pressed={selected}
+            aria-label={option.label}
+            title={option.label}
             data-mailbox-control="status-filter"
-            className="h-7 shrink-0 rounded px-2 text-2xs sm:px-2.5"
+            className="size-8 shrink-0 rounded-md"
             onClick={() => onChange(option.value)}
           >
-            {option.label}
+            <Icon className="size-4" aria-hidden="true" />
           </Button>
         );
       })}

@@ -40,6 +40,9 @@ interface MailboxListProps {
   readOnly?: boolean;
   /** Optional per-row trailing control, e.g. a list-specific action. */
   rowAction?: (row: MessageRowView) => ReactNode;
+  toolbarEnd?: ReactNode;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 interface FlatHeader {
@@ -82,6 +85,9 @@ export function MailboxList({
   onLoadMore,
   readOnly = false,
   rowAction,
+  toolbarEnd,
+  onRefresh,
+  refreshing = false,
 }: MailboxListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const pendingSequenceTimerRef = useRef<number | null>(null);
@@ -444,16 +450,6 @@ export function MailboxList({
     setPendingPrefix,
   ]);
 
-  if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={Inbox}
-        title="No mail here"
-        description="This lens is empty, or sync has not delivered messages yet."
-      />
-    );
-  }
-
   function toggleRow(row: MessageRowView, shift: boolean) {
     if (shift && lastClickedId) {
       const ordered = rows.map((item) => item.id);
@@ -470,53 +466,68 @@ export function MailboxList({
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {readOnly ? null : <BulkActionBar rows={rows} />}
-      <div
-        ref={parentRef}
-        role="region"
-        aria-label="Mailbox messages"
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
-        data-active-pane={activePane === "mailbox" ? "true" : undefined}
-        data-testid="mailbox-list"
-        onMouseDown={() => setActivePane("mailbox")}
-      >
-        <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
-          {virtualItems.map((virtualItem) => {
-            const item = flat[virtualItem.index];
-            if (!item) return null;
-            return (
-              <div
-                key={item.kind === "header" ? item.id : item.row.id}
-                data-index={virtualItem.index}
-                data-mailbox-virtual-row={item.kind === "row" ? "true" : undefined}
-                ref={virtualizer.measureElement}
-                className="absolute left-0 top-0 w-full"
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
-              >
-                {item.kind === "header" ? (
-                  <div className="mailbox-group-header sticky top-0 z-[1] flex h-8 items-center border-b border-border bg-background/95 px-3 font-mono text-2xs uppercase tracking-wide text-muted-foreground backdrop-blur">
-                    {item.label}
-                  </div>
-                ) : (
-                  <MailboxRow
-                    row={item.row}
-                    selected={!readOnly && selectedIds.has(item.row.id)}
-                    focused={focusedRow?.id === item.row.id}
-                    onToggleSelection={(shift) => toggleRow(item.row, shift)}
-                    onFocusPane={() => setActivePane("mailbox")}
-                    onFocusRow={() => setFocusedId(item.row.id)}
-                    onOpen={() => openRow(item.row, "mailbox")}
-                    onOpenWithKeyboard={() => openRow(item.row, "reader")}
-                    dragSource={!readOnly ? dragSourceFor(item.row) : undefined}
-                    readOnly={readOnly}
-                    trailingAction={rowAction?.(item.row)}
-                  />
-                )}
-              </div>
-            );
-          })}
+      {readOnly ? null : (
+        <BulkActionBar
+          rows={rows}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          trailing={toolbarEnd}
+        />
+      )}
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={Inbox}
+          title="No mail here"
+          description="No messages match this view or filter."
+        />
+      ) : (
+        <div
+          ref={parentRef}
+          role="region"
+          aria-label="Mailbox messages"
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+          data-active-pane={activePane === "mailbox" ? "true" : undefined}
+          data-testid="mailbox-list"
+          onMouseDown={() => setActivePane("mailbox")}
+        >
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
+            {virtualItems.map((virtualItem) => {
+              const item = flat[virtualItem.index];
+              if (!item) return null;
+              return (
+                <div
+                  key={item.kind === "header" ? item.id : item.row.id}
+                  data-index={virtualItem.index}
+                  data-mailbox-virtual-row={item.kind === "row" ? "true" : undefined}
+                  ref={virtualizer.measureElement}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  {item.kind === "header" ? (
+                    <div className="mailbox-group-header sticky top-0 z-[1] flex h-8 items-center border-b border-border bg-background/95 px-3 font-mono text-2xs uppercase tracking-wide text-muted-foreground backdrop-blur">
+                      {item.label}
+                    </div>
+                  ) : (
+                    <MailboxRow
+                      row={item.row}
+                      selected={!readOnly && selectedIds.has(item.row.id)}
+                      focused={focusedRow?.id === item.row.id}
+                      onToggleSelection={(shift) => toggleRow(item.row, shift)}
+                      onFocusPane={() => setActivePane("mailbox")}
+                      onFocusRow={() => setFocusedId(item.row.id)}
+                      onOpen={() => openRow(item.row, "mailbox")}
+                      onOpenWithKeyboard={() => openRow(item.row, "reader")}
+                      dragSource={!readOnly ? dragSourceFor(item.row) : undefined}
+                      readOnly={readOnly}
+                      trailingAction={rowAction?.(item.row)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

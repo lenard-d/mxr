@@ -41,4 +41,24 @@ describe("BulkActionBar", () => {
 
     expect(mutation.mutate).toHaveBeenCalledWith(["msg-1", "msg-2"]);
   });
+
+  test("shows refresh beside select until a selection replaces it with actions", () => {
+    const onRefresh = vi.fn<() => void>();
+    useSelection.getState().clear();
+
+    const { rerender } = render(
+      <BulkActionBar rows={[]} onRefresh={onRefresh} trailing={<span>Filters</span>} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Fetch new mail" }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(screen.getByText("Filters")).toBeVisible();
+
+    useSelection.getState().selectMany(["msg-1"]);
+    rerender(<BulkActionBar onRefresh={onRefresh} trailing={<span>Filters</span>} />);
+
+    expect(screen.queryByRole("button", { name: "Fetch new mail" })).not.toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeVisible();
+  });
 });
