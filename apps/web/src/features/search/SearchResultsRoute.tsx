@@ -4,6 +4,8 @@ import { BookmarkPlus, HelpCircle, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { hasNonShiftModifier } from "@/lib/keybindings";
+
 import {
   createSavedSearch,
   deleteSavedSearch,
@@ -56,8 +58,7 @@ export function SearchResultsRoute() {
   const mode = search.mode ?? "lexical";
   const sort = search.sort ?? "relevance";
   const scope =
-    (search.scope as "threads" | "messages" | "attachments" | "triage" | undefined) ??
-    "threads";
+    (search.scope as "threads" | "messages" | "attachments" | "triage" | undefined) ?? "threads";
   const verdict = search.verdict as "ACTION" | "FYI" | "ROUTINE" | undefined;
   const groupBy = (search.groupBy as SearchGroupBy | undefined) ?? "from";
   const [saveOpen, setSaveOpen] = useState(false);
@@ -189,6 +190,7 @@ export function SearchResultsRoute() {
   useEffect(() => {
     function focusOnSlash(event: KeyboardEvent) {
       if (event.key !== "/" || event.defaultPrevented) return;
+      if (hasNonShiftModifier(event)) return;
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -305,8 +307,7 @@ export function SearchResultsRoute() {
                 value={verdict ?? "ALL"}
                 onValueChange={(value) =>
                   updateSearch({
-                    verdict:
-                      value === "ALL" ? null : (value as "ACTION" | "FYI" | "ROUTINE"),
+                    verdict: value === "ALL" ? null : (value as "ACTION" | "FYI" | "ROUTINE"),
                   })
                 }
               >
@@ -396,9 +397,7 @@ export function SearchResultsRoute() {
           <div className="flex items-center justify-between px-4 py-2 text-2xs text-muted-foreground">
             <span>
               {loadedCount} of {resultCount} results · {mode} · {sort}
-              {scope === "triage" && typeof llmCalls === "number"
-                ? ` · ${llmCalls} LLM calls`
-                : ""}
+              {scope === "triage" && typeof llmCalls === "number" ? ` · ${llmCalls} LLM calls` : ""}
             </span>
             <span>{savedSearches.data?.searches.length ?? 0} saved searches</span>
           </div>
@@ -523,7 +522,6 @@ function mergeSearchGroups(groups: MessageGroupView[]): MessageGroupView[] {
   }
   return Array.from(merged.values());
 }
-
 
 function SavedSearchManager({
   searches,

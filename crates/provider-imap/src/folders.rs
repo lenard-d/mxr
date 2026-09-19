@@ -27,6 +27,7 @@ pub fn map_folder_to_label(
             Some(Role::Archive),
         ),
         Some("\\All") => ("ALL".to_string(), LabelKind::System, Some(Role::AllMail)),
+        Some("\\Important") => ("IMPORTANT".to_string(), LabelKind::System, None),
         Some("\\Flagged") => (
             "STARRED".to_string(),
             LabelKind::System,
@@ -55,7 +56,22 @@ pub fn map_gmail_folder_to_label(
     account_id: &AccountId,
 ) -> Label {
     let mut label = map_folder_to_label(folder_name, special_use, account_id);
-    if let Some(system_provider_id) = special_use.and_then(normalize_gmail_label_provider_id) {
+    let fallback_system_provider_id = if special_use.is_none() {
+        let leaf = folder_name
+            .rsplit_once('/')
+            .map_or(folder_name, |(_, leaf)| leaf)
+            .to_ascii_lowercase();
+        match leaf.as_str() {
+            "all mail" | "alle nachrichten" => Some("ALL".to_string()),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    if let Some(system_provider_id) = special_use
+        .and_then(normalize_gmail_label_provider_id)
+        .or(fallback_system_provider_id)
+    {
         label.provider_id = system_provider_id.clone();
         label.id = LabelId::from_scoped_provider_id(account_id, "imap", &system_provider_id);
     } else if folder_name.eq_ignore_ascii_case("inbox") {
@@ -81,14 +97,17 @@ pub fn normalize_gmail_label_provider_id(label: &str) -> Option<String> {
     // label named "Junk"/"All"/"Flagged" falls through unchanged instead of
     // collapsing onto a system label (which would, e.g., hide mail as SPAM).
     // Bare "inbox" is handled by `map_gmail_folder_to_label`.
+    // imap-proto keeps quoted-string escape bytes. Gmail therefore reaches us
+    // as either `\Inbox` (atom) or `\\Inbox` (quoted string on the wire).
     let normalized = match trimmed.to_ascii_lowercase().as_str() {
-        "\\inbox" => "INBOX".to_string(),
-        "\\sent" => "SENT".to_string(),
-        "\\draft" | "\\drafts" => "DRAFT".to_string(),
-        "\\trash" => "TRASH".to_string(),
-        "\\spam" | "\\junk" => "SPAM".to_string(),
-        "\\flagged" | "\\starred" => "STARRED".to_string(),
-        "\\all" | "\\allmail" => "ALL".to_string(),
+        "\\inbox" | "\\\\inbox" => "INBOX".to_string(),
+        "\\sent" | "\\\\sent" => "SENT".to_string(),
+        "\\draft" | "\\\\draft" | "\\drafts" | "\\\\drafts" => "DRAFT".to_string(),
+        "\\trash" | "\\\\trash" => "TRASH".to_string(),
+        "\\spam" | "\\\\spam" | "\\junk" | "\\\\junk" => "SPAM".to_string(),
+        "\\flagged" | "\\\\flagged" | "\\starred" | "\\\\starred" => "STARRED".to_string(),
+        "\\important" | "\\\\important" => "IMPORTANT".to_string(),
+        "\\all" | "\\\\all" | "\\allmail" | "\\\\allmail" => "ALL".to_string(),
         "" => return None,
         _ => trimmed.to_string(),
     };
@@ -175,6 +194,24 @@ mod tests {
             normalize_gmail_label_provider_id("\\Sent"),
             Some("SENT".to_string())
         );
+        assert_eq!(
+            normalize_gmail_label_provider_id("\\\\Inbox"),
+            Some("INBOX".to_string())
+        );
+        assert_eq!(
+            normalize_gmail_label_provider_id("\\\\Important"),
+            Some("IMPORTANT".to_string())
+        );
+    }
+
+    #[test]
+    fn gmail_all_mail_fallback_folder_uses_canonical_provider_id() {
+        let account_id = AccountId::new();
+
+        for folder in ["All Mail", "[Gmail]/All Mail", "[Gmail]/Alle Nachrichten"] {
+            let label = map_gmail_folder_to_label(folder, None, &account_id);
+            assert_eq!(label.provider_id, "ALL", "folder: {folder}");
+        }
     }
 
     #[test]

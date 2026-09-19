@@ -133,7 +133,6 @@ export function MailboxRow({
             }}
             onKeyDown={(event) => {
               selectionShiftRef.current = event.shiftKey;
-              event.stopPropagation();
             }}
             onCheckedChange={() => {
               onToggleSelection(selectionShiftRef.current);

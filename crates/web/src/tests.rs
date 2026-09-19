@@ -1239,6 +1239,83 @@ async fn mailbox_endpoint_lists_envelopes() {
 }
 
 #[tokio::test]
+async fn client_shell_scopes_sidebar_labels_to_requested_account() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let requested_account_id = account_id.clone();
+    let labels = sample_labels(&account_id);
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::GetStatus => Some(Response::Ok {
+                data: ResponseData::Status {
+                    uptime_secs: 42,
+                    accounts: vec!["personal".into()],
+                    total_messages: 12,
+                    daemon_pid: Some(999),
+                    sync_statuses: Vec::new(),
+                    protocol_version: IPC_PROTOCOL_VERSION,
+                    daemon_version: Some("0.5.10".into()),
+                    daemon_build_id: Some("build-123".into()),
+                    repair_required: false,
+                    semantic_runtime: None,
+                    feature_health: None,
+                    degraded: false,
+                },
+            }),
+            Request::ListLabels {
+                account_id: Some(candidate),
+            } if candidate == requested_account_id => Some(Response::Ok {
+                data: ResponseData::Labels {
+                    labels: labels.clone(),
+                },
+            }),
+            Request::ListSavedSearches => Some(Response::Ok {
+                data: ResponseData::SavedSearches { searches: vec![] },
+            }),
+            Request::ListSubscriptions {
+                account_id: Some(candidate),
+                limit: 8,
+            } if candidate == requested_account_id => Some(Response::Ok {
+                data: ResponseData::Subscriptions {
+                    subscriptions: vec![],
+                },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .get(format!(
+            "http://{addr}/api/v1/client/shell?account_id={account_id}"
+        ))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert!(json["sidebar"]["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|section| section["items"].as_array().into_iter().flatten())
+        .any(|item| item["label"] == "Follow Up"));
+}
+
+#[tokio::test]
 async fn mailbox_endpoint_supports_all_mail_lens() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");

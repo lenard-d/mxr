@@ -284,7 +284,8 @@ export function validateShortcutPreferences(
 
   for (const definition of CONFIGURABLE_SHORTCUT_DEFINITIONS) {
     const configured = preferences[definition.id];
-    const value = configured === undefined ? DEFAULT_SHORTCUT_PREFERENCES[definition.id] : configured;
+    const value =
+      configured === undefined ? DEFAULT_SHORTCUT_PREFERENCES[definition.id] : configured;
     if (value !== null) {
       const normalized = normalizeShortcut(value);
       const syntaxError = shortcutSyntaxError(normalized);
@@ -342,7 +343,9 @@ export function validateShortcutPreferences(
       const reversePrefix = isStrictShortcutPrefix(second.shortcut, first.shortcut);
       if (!duplicate && !prefix && !reversePrefix) continue;
       const kind = duplicate ? "duplicate" : "prefix";
-      const key = [kind, first.actionId, second.actionId, first.shortcut, second.shortcut].join("|");
+      const key = [kind, first.actionId, second.actionId, first.shortcut, second.shortcut].join(
+        "|",
+      );
       if (reported.has(key)) continue;
       reported.add(key);
       addConflictIssue(issues, first, second, kind);
@@ -363,9 +366,7 @@ export function validateShortcutValue(
   if (syntaxError) return { valid: false, value: null, error: syntaxError };
   const value = normalized || null;
   const candidate: ShortcutPreferences = { ...current, [actionId]: value };
-  const issue = validateShortcutPreferences(candidate).find(
-    (item) => item.actionId === actionId,
-  );
+  const issue = validateShortcutPreferences(candidate).find((item) => item.actionId === actionId);
   if (issue) return { valid: false, value, error: issue.message };
   return { valid: true, value };
 }
@@ -415,7 +416,9 @@ export function hasShortcutInScope(
   return CONFIGURABLE_SHORTCUT_DEFINITIONS.some(
     (definition) =>
       definition.scope === scope &&
-      getShortcutValues(definition.id, preferences).some((value) => canonicalShortcut(value) === normalized),
+      getShortcutValues(definition.id, preferences).some(
+        (value) => canonicalShortcut(value) === normalized,
+      ),
   );
 }
 
@@ -436,10 +439,7 @@ export function getEffectiveActionShortcuts(
   if (isShortcutActionId(action.id)) {
     const configured = preferences[action.id];
     if (configured === null) return [];
-    return uniqueShortcuts([
-      configured ?? action.shortcut,
-      ...(action.aliases ?? []),
-    ]);
+    return uniqueShortcuts([configured ?? action.shortcut, ...(action.aliases ?? [])]);
   }
   return uniqueShortcuts([action.shortcut, ...(action.aliases ?? [])]);
 }
@@ -462,17 +462,20 @@ export function matchesShortcutToken(event: KeyboardEvent, rawToken: string): bo
   const expectedMeta = expectedModifiers.has("Meta");
   const expectedShift = expectedModifiers.has("Shift");
   const shiftPressed =
-    event.shiftKey ||
-    (isAlphabeticKey(event.key) && event.key === event.key.toUpperCase());
+    event.shiftKey || (isAlphabeticKey(event.key) && event.key === event.key.toUpperCase());
 
   if (expectedMod ? !(event.ctrlKey || event.metaKey) : event.ctrlKey !== expectedControl) {
     return false;
   }
-  if (expectedMeta && !event.metaKey) return false;
+  if (!expectedMod && event.metaKey !== expectedMeta) return false;
   if (expectedAlt !== event.altKey) return false;
   if (expectedShift !== shiftPressed && !matchesLiteralShiftedKey(event, key)) return false;
   if (!expectedModifiers.has("Shift") && shiftPressed && isAlphabeticKey(key)) return false;
   return eventMatchesKey(event, key);
+}
+
+export function hasNonShiftModifier(event: KeyboardEvent): boolean {
+  return event.metaKey || event.ctrlKey || event.altKey;
 }
 
 export function matchesShortcutSequence(
@@ -570,16 +573,15 @@ function canonicalToken(value: string): string {
   const token = normalizeShortcutToken(value);
   const pieces = token.split("+");
   const rawKey = pieces.at(-1) ?? "";
-  const key =
-    /^Key[A-Z]$/.test(rawKey)
-      ? rawKey.slice(3).toLowerCase()
-      : /^Digit[0-9]$/.test(rawKey)
-        ? rawKey.slice(5)
-        : rawKey === "Slash"
-          ? "/"
-          : rawKey === "Semicolon"
-            ? ";"
-            : rawKey;
+  const key = /^Key[A-Z]$/.test(rawKey)
+    ? rawKey.slice(3).toLowerCase()
+    : /^Digit[0-9]$/.test(rawKey)
+      ? rawKey.slice(5)
+      : rawKey === "Slash"
+        ? "/"
+        : rawKey === "Semicolon"
+          ? ";"
+          : rawKey;
   const order = ["$mod", "Control", "Meta", "Alt", "Shift"];
   const tokenModifiers = pieces.slice(0, -1).toSorted((first, second) => {
     return order.indexOf(first) - order.indexOf(second);
@@ -638,8 +640,11 @@ function formatShortcutToken(value: string): string {
     .filter((modifier) => modifier !== "Shift")
     .map(formatModifier)
     .join("");
-  const formattedKey =
-    /^Key[A-Z]$/.test(key) ? key.slice(3).toLowerCase() : /^Digit[0-9]$/.test(key) ? key.slice(5) : key;
+  const formattedKey = /^Key[A-Z]$/.test(key)
+    ? key.slice(3).toLowerCase()
+    : /^Digit[0-9]$/.test(key)
+      ? key.slice(5)
+      : key;
   if (hasShift && (isAlphabeticKey(key) || /^Key[A-Z]$/.test(key))) {
     return `${prefix}${formattedKey.toUpperCase()}`;
   }

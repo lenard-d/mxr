@@ -157,7 +157,11 @@ pub fn imap_fetch_to_synced_message(
 
     let (mut flags, keywords) = flags_and_keywords_from_imap(&msg.flags);
     let mut label_provider_ids = if msg.gmail_labels.is_empty() {
-        vec![mailbox.to_string()]
+        if msg.gmail_msg_id.is_some() {
+            vec!["ALL".to_string()]
+        } else {
+            vec![mailbox.to_string()]
+        }
     } else {
         let mut labels = Vec::new();
         for label in &msg.gmail_labels {
@@ -170,7 +174,15 @@ pub fn imap_fetch_to_synced_message(
         labels
     };
     if label_provider_ids.is_empty() {
-        label_provider_ids.push(mailbox.to_string());
+        label_provider_ids.push(if msg.gmail_msg_id.is_some() {
+            "ALL".to_string()
+        } else {
+            mailbox.to_string()
+        });
+    }
+    let is_gmail_message = msg.gmail_msg_id.is_some() || !msg.gmail_labels.is_empty();
+    if is_gmail_message && !label_provider_ids.iter().any(|label| label == "ALL") {
+        label_provider_ids.push("ALL".to_string());
     }
 
     if label_provider_ids
@@ -512,6 +524,29 @@ mod tests {
     fn flags_from_imap_empty() {
         let flags = flags_from_imap(&[]);
         assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn gmail_message_without_explicit_labels_keeps_all_mail_association() {
+        let raw = b"From: sender@example.com\r\nSubject: Archived\r\nDate: Fri, 18 Sep 2026 12:00:00 +0000\r\nContent-Type: text/plain\r\n\r\nBody";
+        let msg = FetchedMessage {
+            uid: 42,
+            flags: vec!["\\Seen".into()],
+            envelope: None,
+            body: Some(raw.to_vec()),
+            header: None,
+            size: Some(raw.len() as u32),
+            internal_date: None,
+            gmail_labels: vec![],
+            gmail_msg_id: Some(123),
+            gmail_thread_id: Some(456),
+        };
+
+        let synced =
+            imap_fetch_to_synced_message(&msg, "[Gmail]/Alle Nachrichten", &AccountId::new())
+                .unwrap();
+
+        assert_eq!(synced.envelope.label_provider_ids, vec!["ALL"]);
     }
 
     #[test]

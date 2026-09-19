@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
   DEFAULT_SHORTCUT_PREFERENCES,
   formatShortcutForDisplay,
+  hasNonShiftModifier,
   isShortcutSuppressed,
   matchesShortcutToken,
   sanitizeShortcutPreferences,
@@ -19,11 +20,7 @@ describe("shortcut preferences", () => {
   });
 
   test("rejects invalid and duplicate values instead of shadowing another action", () => {
-    const duplicate = validateShortcutValue(
-      "mailbox.archive",
-      "j",
-      DEFAULT_SHORTCUT_PREFERENCES,
-    );
+    const duplicate = validateShortcutValue("mailbox.archive", "j", DEFAULT_SHORTCUT_PREFERENCES);
     expect(duplicate.valid).toBe(false);
     expect(duplicate.error).toMatch(/move to next/i);
 
@@ -36,11 +33,7 @@ describe("shortcut preferences", () => {
   });
 
   test("rejects prefix collisions in the same scope", () => {
-    const result = validateShortcutValue(
-      "mailbox.archive",
-      "g",
-      DEFAULT_SHORTCUT_PREFERENCES,
-    );
+    const result = validateShortcutValue("mailbox.archive", "g", DEFAULT_SHORTCUT_PREFERENCES);
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/sequence|prefix/i);
   });
@@ -70,6 +63,20 @@ describe("shortcut preferences", () => {
     expect(matchesShortcutToken(bottom, "Shift+g")).toBe(true);
     expect(matchesShortcutToken(selectAll, "$mod+KeyA")).toBe(true);
     expect(matchesShortcutToken(trash, "#")).toBe(true);
+  });
+
+  test("does not treat browser command shortcuts as unmodified mail shortcuts", () => {
+    const commandReload = new KeyboardEvent("keydown", { key: "r", metaKey: true });
+    const commandLocation = new KeyboardEvent("keydown", { key: "l", metaKey: true });
+    const commandPalette = new KeyboardEvent("keydown", { key: "k", metaKey: true });
+
+    expect(matchesShortcutToken(commandReload, "r")).toBe(false);
+    expect(matchesShortcutToken(commandLocation, "l")).toBe(false);
+    expect(matchesShortcutToken(commandPalette, "$mod+KeyK")).toBe(true);
+    expect(hasNonShiftModifier(commandReload)).toBe(true);
+    expect(hasNonShiftModifier(new KeyboardEvent("keydown", { key: "R", shiftKey: true }))).toBe(
+      false,
+    );
   });
 
   test("suppresses shortcuts in controls, dialogs, and composers", () => {

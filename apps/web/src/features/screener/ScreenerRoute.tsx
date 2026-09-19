@@ -3,6 +3,8 @@ import { Shield, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { hasNonShiftModifier } from "@/lib/keybindings";
+
 import {
   clearScreenerDecision,
   fetchScreenerDecisions,
@@ -121,6 +123,7 @@ function ScreenerQueue({ accountId, active }: { accountId: string; active: boole
   useEffect(() => {
     if (!active) return;
     function onKeyDown(event: KeyboardEvent) {
+      if (hasNonShiftModifier(event)) return;
       const target = event.target;
       if (target instanceof HTMLElement) {
         if (target.closest("input, textarea, select, [contenteditable=true]")) return;

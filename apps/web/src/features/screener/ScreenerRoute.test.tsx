@@ -93,6 +93,9 @@ describe("ScreenerRoute", () => {
   test("pressing a allows the focused sender", async () => {
     renderWithQueryClient(<ScreenerRoute />);
 
+    await waitFor(() => {
+      expect(screener.fetchScreenerQueue).toHaveBeenCalledWith("account-1");
+    });
     expect(await screen.findByText("Unknown Sender")).toBeVisible();
 
     fireEvent.keyDown(window, { key: "a" });

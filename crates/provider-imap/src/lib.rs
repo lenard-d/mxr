@@ -24,6 +24,7 @@ use mxr_core::types::*;
 pub use session::XOAuth2ImapSessionFactory;
 use session::{ImapSessionFactory, RealImapSessionFactory};
 use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
 use tracing::{debug, warn};
 
 use crate::types::{FolderInfo, ImapCapabilities};
@@ -58,11 +59,17 @@ struct CollectSyncedMessages<'a> {
     min_failed_uid: &'a mut Option<u32>,
 }
 
+struct SyncDiscovery {
+    capabilities: ImapCapabilities,
+    folders: Vec<FolderInfo>,
+}
+
 pub struct ImapProvider {
     account_id: AccountId,
     trash_folder: String,
     max_connections: usize,
     session_factory: Box<dyn ImapSessionFactory>,
+    pending_discovery: Mutex<Option<SyncDiscovery>>,
 }
 
 impl ImapProvider {
@@ -74,6 +81,7 @@ impl ImapProvider {
             trash_folder: "Trash".to_string(),
             max_connections,
             session_factory,
+            pending_discovery: Mutex::new(None),
         }
     }
 
@@ -88,12 +96,28 @@ impl ImapProvider {
             trash_folder: "Trash".to_string(),
             max_connections: config.max_connections,
             session_factory,
+            pending_discovery: Mutex::new(None),
         }
     }
 
     pub fn with_trash_folder(mut self, folder: String) -> Self {
         self.trash_folder = folder;
         self
+    }
+
+    fn cache_discovery(&self, discovery: SyncDiscovery) {
+        let mut cached = self
+            .pending_discovery
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *cached = Some(discovery);
+    }
+
+    fn take_discovery(&self) -> Option<SyncDiscovery> {
+        self.pending_discovery
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 
     fn build_imap_cursor(
@@ -368,6 +392,11 @@ impl ImapProvider {
                 Ok(fetched) => Self::append_fetched_messages(&fetched, &mut request),
                 Err(error) if error.is_malformed_fetch_response() => {
                     skipped_uids.push(uid);
+                    *request.min_failed_uid = Some(
+                        request
+                            .min_failed_uid
+                            .map_or(uid, |current| current.min(uid)),
+                    );
                     drop(session);
                     session = self.selected_session(request.mailbox, capabilities).await?;
                 }
@@ -486,26 +515,39 @@ impl ImapProvider {
     async fn initial_sync(&self) -> mxr_core::provider::Result<SyncBatch> {
         debug!("Starting IMAP initial sync for account {}", self.account_id);
 
-        let mut session = self
-            .session_factory
-            .create_session()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+        let SyncDiscovery {
+            capabilities,
+            folders,
+        } = if let Some(discovery) = self.take_discovery() {
+            debug!("Reusing folder discovery from label sync for IMAP initial sync");
+            discovery
+        } else {
+            let mut session = self
+                .session_factory
+                .create_session()
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
 
-        let capabilities = session
-            .capabilities()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-        debug!(?capabilities, "IMAP server capabilities");
-        Self::enable_session(&mut *session, &capabilities).await?;
+            let capabilities = session
+                .capabilities()
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+            debug!(?capabilities, "IMAP server capabilities");
+            Self::enable_session(&mut *session, &capabilities).await?;
 
-        let folders = session
-            .list_folders()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            let folders = session.list_folders().await.map_err(|error| {
+                warn!(%error, "IMAP initial sync failed during folder discovery");
+                mxr_core::error::MxrError::from(error)
+            })?;
+            let _ = session.logout().await;
+            SyncDiscovery {
+                capabilities,
+                folders,
+            }
+        };
+
         if capabilities.x_gm_ext_1 {
             if let Some(all_mail) = Self::gmail_all_mail_folder(&folders) {
-                let _ = session.logout().await;
                 return self
                     .initial_gmail_all_mail_sync(all_mail, capabilities)
                     .await;
@@ -513,7 +555,6 @@ impl ImapProvider {
             warn!("Gmail IMAP extension advertised but no All Mail folder was discovered; falling back to folder sync");
         }
         let sync_folders = Self::syncable_folders(&folders);
-        let _ = session.logout().await;
 
         let folder_concurrency = sync_folders.len().clamp(1, self.max_connections.max(1));
         let mut folder_results = stream::iter(sync_folders.into_iter().enumerate())
@@ -694,10 +735,14 @@ impl ImapProvider {
             .map_err(mxr_core::error::MxrError::from)?;
         Self::enable_session(&mut *session, &capabilities).await?;
 
-        let mailbox_info = session
-            .select(&all_mail.name)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+        let mailbox_info = session.select(&all_mail.name).await.map_err(|error| {
+            warn!(
+                mailbox = %all_mail.name,
+                %error,
+                "Gmail IMAP sync failed while selecting All Mail"
+            );
+            mxr_core::error::MxrError::from(error)
+        })?;
         let mailbox = ImapMailboxCursor {
             mailbox: all_mail.name.clone(),
             uid_validity: mailbox_info.uid_validity,
@@ -710,33 +755,36 @@ impl ImapProvider {
         let page_end = start_uid
             .saturating_add(GMAIL_ALL_MAIL_SYNC_PAGE_UID_SPAN - 1)
             .min(end_uid);
+        let mut min_failed_uid = None;
 
         if start_uid <= page_end && mailbox_info.exists > 0 {
             let uid_set = format!("{start_uid}:{page_end}");
-            let fetched = session
-                .uid_fetch(&uid_set, Self::gmail_fetch_query())
-                .await
-                .map_err(mxr_core::error::MxrError::from)?;
-
-            for msg in &fetched {
-                match parse::imap_fetch_to_synced_message(msg, &all_mail.name, &self.account_id) {
-                    Ok(sm) => synced.push(sm),
-                    Err(e) => warn!(
-                        mailbox = %all_mail.name,
-                        uid = msg.uid,
-                        error = %e,
-                        "Failed to parse Gmail IMAP message"
-                    ),
-                }
-            }
+            let mut seen_uids = HashSet::new();
+            session = self
+                .collect_synced_messages(
+                    session,
+                    &capabilities,
+                    CollectSyncedMessages {
+                        mailbox: &all_mail.name,
+                        uid_set: &uid_set,
+                        query: Self::gmail_fetch_query(),
+                        min_uid: start_uid,
+                        seen_uids: &mut seen_uids,
+                        account_id: &self.account_id,
+                        synced: &mut synced,
+                        min_failed_uid: &mut min_failed_uid,
+                    },
+                )
+                .await?;
         }
 
         let _ = session.logout().await;
-        let has_more = page_end < end_uid;
+        let retry_uid = min_failed_uid.filter(|uid| *uid <= end_uid);
+        let has_more = retry_uid.is_some() || page_end < end_uid;
         let next_cursor = if has_more {
             ImapCursor::new_backfill(
                 mailbox,
-                page_end.saturating_add(1),
+                retry_uid.unwrap_or_else(|| page_end.saturating_add(1)),
                 end_uid,
                 true,
                 Some(Self::capability_state(&capabilities)),
@@ -778,26 +826,38 @@ impl ImapProvider {
             "Starting IMAP delta sync for account {}", self.account_id
         );
 
-        let mut session = self
-            .session_factory
-            .create_session()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+        let SyncDiscovery {
+            capabilities,
+            folders,
+        } = if let Some(discovery) = self.take_discovery() {
+            debug!("Reusing folder discovery from label sync for IMAP delta sync");
+            discovery
+        } else {
+            let mut session = self
+                .session_factory
+                .create_session()
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
 
-        let capabilities = session
-            .capabilities()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-        debug!(?capabilities, "IMAP server capabilities");
-        Self::enable_session(&mut *session, &capabilities).await?;
+            let capabilities = session
+                .capabilities()
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+            debug!(?capabilities, "IMAP server capabilities");
+            Self::enable_session(&mut *session, &capabilities).await?;
 
-        let folders = session
-            .list_folders()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            let folders = session.list_folders().await.map_err(|error| {
+                warn!(%error, "IMAP delta sync failed during folder discovery");
+                mxr_core::error::MxrError::from(error)
+            })?;
+            let _ = session.logout().await;
+            SyncDiscovery {
+                capabilities,
+                folders,
+            }
+        };
         if capabilities.x_gm_ext_1 {
             if let Some(all_mail) = Self::gmail_all_mail_folder(&folders) {
-                let _ = session.logout().await;
                 return self
                     .delta_gmail_all_mail_sync(old_mailboxes, all_mail, capabilities)
                     .await;
@@ -805,7 +865,6 @@ impl ImapProvider {
             warn!("Gmail IMAP extension advertised but no All Mail folder was discovered; falling back to folder sync");
         }
         let sync_folders = Self::syncable_folders(&folders);
-        let _ = session.logout().await;
         let old_by_mailbox: HashMap<&str, &ImapMailboxCursor> = old_mailboxes
             .iter()
             .map(|mailbox| (mailbox.mailbox.as_str(), mailbox))
@@ -1224,12 +1283,20 @@ impl MailSyncProvider for ImapProvider {
         }
     }
 
+    fn syncs_message_labels(&self) -> bool {
+        true
+    }
+
     fn describe_cursor(&self, cursor: &SyncCursor) -> String {
         match ImapCursor::decode(cursor) {
             Ok(None) => "initial".to_string(),
             Ok(Some(c)) => c.describe(),
             Err(_) => format!("expired len={}", cursor.as_bytes().len()),
         }
+    }
+
+    fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+        matches!(ImapCursor::decode(cursor), Ok(Some(c)) if c.backfill().is_some())
     }
 
     /// Phase 3.1: open a dedicated IDLE watcher on a fresh
@@ -1278,6 +1345,10 @@ impl MailSyncProvider for ImapProvider {
             .map_err(mxr_core::error::MxrError::from)?;
 
         let _ = session.logout().await;
+        self.cache_discovery(SyncDiscovery {
+            capabilities: capabilities.clone(),
+            folders: folder_list.clone(),
+        });
 
         Ok(folder_list
             .iter()
@@ -2279,7 +2350,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["INBOX:1", "INBOX:3"]
         );
-        assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_next, 4);
+        assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_next, 2);
 
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands
@@ -2404,10 +2475,13 @@ mod tests {
         assert_eq!(batch.upserted[0].envelope.provider_id, "All Mail:1");
         assert_eq!(
             batch.upserted[0].envelope.label_provider_ids,
-            vec!["INBOX", "Work", "STARRED"]
+            vec!["INBOX", "Work", "STARRED", "ALL"]
         );
         assert_eq!(batch.upserted[1].envelope.provider_id, "All Mail:2");
-        assert_eq!(batch.upserted[1].envelope.label_provider_ids, vec!["Work"]);
+        assert_eq!(
+            batch.upserted[1].envelope.label_provider_ids,
+            vec!["Work", "ALL"]
+        );
         assert!(!batch.has_more);
 
         let commands = log.lock().unwrap().commands.clone();
@@ -2417,6 +2491,115 @@ mod tests {
             .any(|command| command.contains("X-GM-LABELS")));
         assert!(!commands.contains(&"SELECT INBOX".to_string()));
         assert!(!commands.contains(&"SELECT Sent Mail".to_string()));
+    }
+
+    #[tokio::test]
+    async fn gmail_initial_sync_isolates_malformed_fetch_literals() {
+        let mut good_before = make_fetched_message(1, "Before malformed", "alice@example.com");
+        good_before.gmail_labels = vec!["\\Inbox".into()];
+        let good_after = make_fetched_message(3, "After malformed", "carol@example.com");
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 4, 3),
+            vec![],
+            vec![folder_info("All Mail", Some("\\All"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_mailbox_fetch_results(
+            "All Mail",
+            vec![1, 2, 3],
+            vec![
+                Err(error::ImapProviderError::MalformedFetchResponse),
+                Ok(vec![good_before]),
+                Err(error::ImapProviderError::MalformedFetchResponse),
+                Ok(vec![good_after]),
+            ],
+        );
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert_eq!(
+            batch
+                .upserted
+                .iter()
+                .map(|message| message.envelope.provider_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["All Mail:1", "All Mail:3"]
+        );
+        assert!(batch.has_more);
+        let cursor = ImapCursor::decode(&batch.next_cursor).unwrap().unwrap();
+        let backfill = cursor
+            .backfill()
+            .expect("malformed UID must remain retryable");
+        assert_eq!(backfill.next_uid, 2);
+        assert_eq!(backfill.end_uid, 3);
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.iter().any(|command| {
+            command.contains("UID FETCH 1:3") && command.contains("X-GM-LABELS")
+        }));
+        assert!(commands
+            .iter()
+            .any(|command| command.contains("UID SEARCH UID 1:3")));
+        assert!(commands
+            .iter()
+            .any(|command| command.starts_with("UID FETCH 2 ")));
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| command.as_str() == "SELECT All Mail")
+                .count(),
+            3,
+            "the failed page and malformed UID must each be followed by a fresh session"
+        );
+    }
+
+    #[tokio::test]
+    async fn gmail_initial_sync_reuses_successful_label_discovery() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("All Mail", Some("\\All")),
+            ],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_mailbox_fetches(
+            "All Mail",
+            vec![vec![make_fetched_message(
+                1,
+                "Cached discovery",
+                "alice@example.com",
+            )]],
+        );
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let labels = provider.sync_labels().await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert_eq!(labels.len(), 2);
+        assert_eq!(batch.upserted.len(), 1);
+        assert_eq!(
+            log.lock()
+                .unwrap()
+                .commands
+                .iter()
+                .filter(|command| command.as_str() == "LIST")
+                .count(),
+            1,
+            "initial sync must reuse the discovery that just succeeded"
+        );
     }
 
     #[tokio::test]
@@ -2441,11 +2624,13 @@ mod tests {
         let first = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
         assert_eq!(first.upserted.len(), 1);
         assert!(first.has_more);
+        assert!(provider.is_backfill_cursor(&first.next_cursor));
 
         let second = provider.sync_messages(&first.next_cursor).await.unwrap();
         assert_eq!(second.upserted.len(), 1);
         assert_eq!(second.upserted[0].envelope.provider_id, "All Mail:501");
         assert!(!second.has_more);
+        assert!(!provider.is_backfill_cursor(&second.next_cursor));
         let mailboxes = decoded_imap_mailboxes(&second.next_cursor);
         assert_eq!(mailboxes[0].uid_next, 502);
 
@@ -2542,6 +2727,49 @@ mod tests {
     // -- sync_messages: delta -------------------------------------------------
 
     #[tokio::test]
+    async fn gmail_delta_sync_reuses_successful_label_discovery() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("All Mail", Some("\\All")),
+            ],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        });
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let labels = provider.sync_labels().await.unwrap();
+        let batch = provider
+            .sync_messages(&imap_cursor_mailboxes(vec![ImapMailboxCursor {
+                mailbox: "All Mail".to_string(),
+                uid_validity: 1,
+                uid_next: 2,
+                highest_modseq: None,
+            }]))
+            .await
+            .unwrap();
+
+        assert_eq!(labels.len(), 2);
+        assert!(batch.upserted.is_empty());
+        assert_eq!(
+            log.lock()
+                .unwrap()
+                .commands
+                .iter()
+                .filter(|command| command.as_str() == "LIST")
+                .count(),
+            1,
+            "delta sync must reuse the discovery that just succeeded"
+        );
+    }
+
+    #[tokio::test]
     async fn gmail_delta_without_all_mail_cursor_starts_canonical_backfill() {
         let mut archived_only = make_fetched_message(50, "Archived upgrade", "alice@example.com");
         archived_only.gmail_labels = vec!["Projects".into()];
@@ -2578,7 +2806,7 @@ mod tests {
         assert_eq!(batch.upserted[0].envelope.provider_id, "All Mail:50");
         assert_eq!(
             batch.upserted[0].envelope.label_provider_ids,
-            vec!["Projects"]
+            vec!["Projects", "ALL"]
         );
         assert!(!batch.has_more);
         assert_eq!(
@@ -3282,6 +3510,8 @@ mod tests {
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         assert!(provider.capabilities().push.streaming);
+        assert!(!provider.capabilities().mutate.labels);
+        assert!(provider.syncs_message_labels());
     }
 
     #[tokio::test]

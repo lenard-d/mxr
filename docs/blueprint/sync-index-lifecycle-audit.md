@@ -76,7 +76,7 @@ Current repair/recovery behavior:
 - Gmail cursor recovery
   - if a Gmail cursor is invalid/not-found, sync resets to `Initial` once and retries
 - Junction-table corruption recovery
-  - if a label-capable provider has messages but `message_labels` is empty, sync resets cursor and re-runs a full rebuild path
+  - if a provider syncs stable message labels and any message in its account has no `message_labels` association, sync resets the cursor and re-runs a full rebuild path
 - Lexical startup repair
   - on daemon startup, if Tantivy doc count does not match SQLite message count, mxr rebuilds the lexical index from SQLite
 - Semantic later-enable backfill

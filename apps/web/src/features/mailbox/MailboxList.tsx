@@ -408,10 +408,10 @@ export function MailboxList({
         return;
       }
       const target = event.target;
-      if (
+      const targetIsMailboxControl =
         target instanceof Element &&
-        target.closest("button, [role=checkbox], [data-mailbox-control]")
-      ) {
+        target.closest("button, [role=checkbox], [data-mailbox-control]");
+      if (targetIsMailboxControl && (event.key === "Enter" || event.key === " ")) {
         clearPendingSequence();
         return;
       }

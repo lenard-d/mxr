@@ -24,6 +24,14 @@ pub(super) struct MailboxQuery {
     pub(super) token: Option<String>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub(super) struct ShellQuery {
+    #[serde(default)]
+    pub(super) account_id: Option<String>,
+    #[serde(default)]
+    pub(super) token: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum MailboxView {

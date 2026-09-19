@@ -37,6 +37,8 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { hasNonShiftModifier } from "@/lib/keybindings";
+
 import {
   fetchSenderProfile,
   fetchThread,
@@ -441,6 +443,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (activePane !== "reader") return;
+      if (hasNonShiftModifier(event)) return;
       const target = event.target;
       if (target instanceof HTMLElement) {
         if (target.closest("input, textarea, select, [contenteditable=true]")) return;

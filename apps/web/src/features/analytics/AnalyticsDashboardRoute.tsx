@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
+import { hasNonShiftModifier } from "@/lib/keybindings";
+
 import {
   fetchContactAsymmetry,
   fetchContactDecay,
@@ -572,6 +574,7 @@ function WrappedStory({
   const [index, setIndex] = useState(0);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (hasNonShiftModifier(e)) return;
       const target = e.target as HTMLElement | null;
       if (target?.closest("input, textarea, [contenteditable=true]")) return;
       if (e.key === "j" || e.key === "ArrowDown" || e.key === "ArrowRight") {

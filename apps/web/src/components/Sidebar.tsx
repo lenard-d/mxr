@@ -46,7 +46,7 @@ import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import type { SidebarItem } from "@/features/mailbox/types";
 import { buildMailMailboxPath, parseMailLocation } from "@/features/mailbox/location";
 import { cn } from "@/lib/utils";
-import { isShortcutSuppressed } from "@/lib/keybindings";
+import { hasNonShiftModifier, isShortcutSuppressed } from "@/lib/keybindings";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import {
   DEFAULT_SIDEBAR_WIDTH,
@@ -213,6 +213,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps = {}) {
       if (activePane !== "sidebar") return;
       if (event.defaultPrevented) return;
       if (isShortcutSuppressed(event)) return;
+      if (hasNonShiftModifier(event)) return;
       if (event.key === "j" || event.key === "ArrowDown") {
         event.preventDefault();
         setSidebarIndex(Math.min(navigationItems.length - 1, sidebarIndex + 1));
@@ -567,12 +568,17 @@ function scopedMailItems(items: NavItem[], accountKey: string): NavItem[] {
   return items.map((item) => {
     if (!item.to.startsWith("/m/")) return item;
     const mailbox = item.to.slice("/m/".length);
-    const lens = mailbox === "inbox" ? { kind: "inbox" as const } : mailbox === "archive" ? { kind: "archive" as const } : { kind: "label" as const, labelId: mailbox };
+    const lens =
+      mailbox === "inbox"
+        ? { kind: "inbox" as const }
+        : mailbox === "archive"
+          ? { kind: "archive" as const }
+          : { kind: "label" as const, labelId: mailbox };
     return { ...item, to: buildMailMailboxPath({ accountKey, lens }) };
   });
 }
 
-function sidebarItemPath(item: SidebarItem, accountKey: string): string {
+export function sidebarItemPath(item: SidebarItem, accountKey: string): string {
   const lens = item.lens;
   if (!lens || lens.kind === "inbox") {
     return buildMailMailboxPath({ accountKey, lens: { kind: "inbox" } });
@@ -587,10 +593,13 @@ function sidebarItemPath(item: SidebarItem, accountKey: string): string {
     });
   }
   if (lens.kind === "label") {
-    return buildMailMailboxPath({ accountKey, lens: { kind: "label", labelId: lens.labelId ?? item.id } });
+    return buildMailMailboxPath({
+      accountKey,
+      lens: { kind: "label", labelId: lens.labelId ?? item.id },
+    });
   }
   if (lens.kind === "subscription") {
-    return buildMailMailboxPath({ accountKey, lens: { kind: "label", labelId: item.id } });
+    return "/subscriptions";
   }
   return buildMailMailboxPath({ accountKey, lens: { kind: "inbox" } });
 }

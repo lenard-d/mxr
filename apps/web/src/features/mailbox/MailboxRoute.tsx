@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import { MailboxList } from "./MailboxList";
 import { useMailboxStatusFilter } from "./mailboxStatusFilterStore";
-import { SyncProgressBanner } from "./SyncProgressBanner";
 import { MailboxStatusFilter } from "./MailboxStatusFilter";
 import { filterMailboxGroups } from "./statusFilter";
 import { useMailboxQuery } from "./useMailboxQuery";
@@ -94,7 +93,6 @@ export function MailboxRoute() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background lg:border-r lg:border-border">
-      <SyncProgressBanner />
       <MailboxList
         groups={visibleGroups}
         mailboxPath={mailboxPath}

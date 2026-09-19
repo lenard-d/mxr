@@ -310,6 +310,7 @@ impl SyncEngine {
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_expired_cursor = false;
+        let mut attempted_label_repair = false;
         // Phase F: accumulate thread_ids touched this sync run. Populated
         // from each upserted envelope plus any (old, canonical) pair
         // returned by `rethread_account`. Drained into
@@ -325,8 +326,10 @@ impl SyncEngine {
                 .map_err(|e| MxrError::Store(e.to_string()))?
                 .unwrap_or_default();
 
+            let is_backfill_page = provider.is_backfill_cursor(&cursor);
+
             // Sync labels — skip during backfill to avoid slowing down pagination
-            if !provider.is_backfill_cursor(&cursor) {
+            if !is_backfill_page {
                 let labels = provider.sync_labels().await?;
                 tracing::debug!(count = labels.len(), "synced labels from provider");
                 for label in &labels {
@@ -601,30 +604,54 @@ impl SyncEngine {
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
 
-            // Backfill: if junction table is empty but messages exist, reset cursor
-            // and re-sync to rebuild label associations (handles DBs corrupted by
-            // the old INSERT OR REPLACE cascade bug).
-            let junction_count = self
+            // Backfill if any message lacks labels. Looking only at aggregate
+            // junction counts misses partial corruption, such as a broken
+            // Gmail X-GM-LABELS decoder affecting only newly synced mail.
+            let mut unlabeled_message_count = self
                 .store
-                .count_message_labels()
+                .count_unlabeled_messages_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
-            let message_count = self
-                .store
-                .count_messages_by_account(account_id)
-                .await
-                .map_err(|e| MxrError::Store(e.to_string()))?;
-            if provider.capabilities().mutate.labels && junction_count == 0 && message_count > 0 {
-                tracing::warn!(
-                    message_count,
-                    "Junction table empty — resetting sync cursor for full re-sync"
-                );
-                self.store
-                    .set_sync_cursor(account_id, &SyncCursor::empty())
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
-                progress(SyncProgress::Restarted);
-                continue;
+            if provider.syncs_message_labels() && !has_more && unlabeled_message_count > 0 {
+                if attempted_label_repair || is_backfill_page {
+                    let fallback_count = self
+                        .store
+                        .attach_unlabeled_messages_to_provider_label(account_id, "ALL")
+                        .await
+                        .map_err(|e| MxrError::Store(e.to_string()))?;
+                    if fallback_count > 0 {
+                        self.store
+                            .recalculate_label_counts(account_id)
+                            .await
+                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                        unlabeled_message_count = self
+                            .store
+                            .count_unlabeled_messages_by_account(account_id)
+                            .await
+                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                        tracing::warn!(
+                            fallback_count,
+                            "Retained provider-orphaned messages under the ALL label after repair"
+                        );
+                    }
+                    if unlabeled_message_count > 0 {
+                        return Err(MxrError::Sync(format!(
+                            "label repair completed without rebuilding associations for account {account_id}"
+                        )));
+                    }
+                } else {
+                    tracing::warn!(
+                        unlabeled_message_count,
+                        "Messages without labels found — resetting sync cursor for full re-sync"
+                    );
+                    self.store
+                        .set_sync_cursor(account_id, &SyncCursor::empty())
+                        .await
+                        .map_err(|e| MxrError::Store(e.to_string()))?;
+                    attempted_label_repair = true;
+                    progress(SyncProgress::Restarted);
+                    continue;
+                }
             }
 
             // Phase F: hydrate `threads_changed` from the touched set.

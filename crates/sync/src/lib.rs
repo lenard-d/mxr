@@ -1799,10 +1799,102 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn backfill_triggers_when_junction_empty() {
+    async fn backfill_repairs_partially_missing_message_labels() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        let other_account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        store
+            .insert_account(&test_account(other_account_id.clone()))
+            .await
+            .unwrap();
+
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone()).with_page_size(10);
+        let other_provider = mxr_provider_fake::FakeProvider::new(other_account_id.clone());
+
+        // Initial sync for both accounts. The other account keeps junction
+        // rows while this account is repaired.
+        loop {
+            if !engine
+                .sync_account_with_outcome(&provider)
+                .await
+                .unwrap()
+                .has_more
+            {
+                break;
+            }
+        }
+        engine.sync_account(&other_provider).await.unwrap();
+
+        let junction_before = store
+            .count_message_labels_by_account(&account_id)
+            .await
+            .unwrap();
+        assert!(junction_before > 0);
+
+        // Remove one message's associations while this account and another
+        // account still have healthy junction rows. Aggregate counts must not
+        // hide partial corruption.
+        sqlx::query(
+            "DELETE FROM message_labels WHERE message_id = \
+             (SELECT id FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT 1)",
+        )
+        .bind(account_id.as_str())
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        let junction_damaged = store
+            .count_message_labels_by_account(&account_id)
+            .await
+            .unwrap();
+        assert!(
+            junction_damaged > 0,
+            "The account should retain other healthy label associations"
+        );
+        assert!(
+            junction_damaged < junction_before,
+            "Deleting one message's associations should create partial corruption"
+        );
+        assert!(
+            store.count_message_labels().await.unwrap() > 0,
+            "The other account should keep the global junction count non-zero"
+        );
+
+        // Sync again — should detect the unlabeled message and finish the
+        // multi-page repair before validating that associations were rebuilt.
+        loop {
+            if !engine
+                .sync_account_with_outcome(&provider)
+                .await
+                .unwrap()
+                .has_more
+            {
+                break;
+            }
+        }
+
+        let junction_after = store
+            .count_message_labels_by_account(&account_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            junction_after, junction_before,
+            "All missing associations should be rebuilt"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_label_repair_stops_after_one_restart() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search);
 
         let account_id = AccountId::new();
         store
@@ -1810,30 +1902,65 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let envelope = make_test_envelope(
+            &account_id,
+            "message-with-unknown-label",
+            vec!["missing-label".to_string()],
+        );
+        let provider = DeltaLabelProvider::new(account_id, vec![envelope], vec![], vec![]);
 
-        // Initial sync
-        engine.sync_account(&provider).await.unwrap();
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            engine.sync_account(&provider),
+        )
+        .await
+        .expect("label repair must not loop forever")
+        .unwrap_err();
 
-        let junction_before = store.count_message_labels().await.unwrap();
-        assert!(junction_before > 0);
+        assert!(error
+            .to_string()
+            .contains("label repair completed without rebuilding associations"));
+    }
 
-        // Wipe junction table manually (simulates corrupted DB)
-        sqlx::query("DELETE FROM message_labels")
-            .execute(store.writer())
+    #[tokio::test]
+    async fn completed_label_repair_retains_provider_orphans_under_all() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search);
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
             .await
             .unwrap();
 
-        let junction_wiped = store.count_message_labels().await.unwrap();
-        assert_eq!(junction_wiped, 0, "Junction should be empty after wipe");
+        let envelope = make_test_envelope(
+            &account_id,
+            "provider-orphan",
+            vec!["missing-label".to_string()],
+        );
+        let provider = DeltaLabelProvider::new(
+            account_id.clone(),
+            vec![envelope],
+            vec![make_test_label(&account_id, "All Mail", "ALL")],
+            vec![],
+        );
 
-        // Sync again — should detect empty junction and backfill
         engine.sync_account(&provider).await.unwrap();
 
-        let junction_after = store.count_message_labels().await.unwrap();
-        assert!(
-            junction_after > 0,
-            "Junction table should be repopulated after backfill (got {junction_after})"
+        assert_eq!(
+            store
+                .count_unlabeled_messages_by_account(&account_id)
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            store
+                .count_message_labels_by_account(&account_id)
+                .await
+                .unwrap(),
+            1
         );
     }
 

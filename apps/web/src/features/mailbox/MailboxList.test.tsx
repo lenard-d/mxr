@@ -261,6 +261,32 @@ describe("MailboxList keyboard selection", () => {
     expect(mutation.mutate).toHaveBeenCalledWith(["msg-1"]);
   });
 
+  test("r and u act on checkbox-selected rows while a checkbox keeps DOM focus", async () => {
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+
+    const checkbox = await screen.findByRole("checkbox", { name: /select all messages in view/i });
+    fireEvent.click(checkbox);
+    checkbox.focus();
+
+    fireEvent.keyDown(checkbox, { key: "r" });
+    expect(mutation.mutate).toHaveBeenLastCalledWith(["msg-1", "msg-2", "msg-3"]);
+
+    mutation.mutate.mockClear();
+    fireEvent.keyDown(checkbox, { key: "u" });
+    expect(mutation.mutate).toHaveBeenLastCalledWith(["msg-1", "msg-2", "msg-3"]);
+  });
+
+  test("does not intercept command-modified mailbox shortcuts", async () => {
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+    await screen.findByRole("checkbox", { name: /select all messages in view/i });
+
+    const reload = new KeyboardEvent("keydown", { key: "r", metaKey: true, cancelable: true });
+    window.dispatchEvent(reload);
+
+    expect(reload.defaultPrevented).toBe(false);
+    expect(mutation.mutate).not.toHaveBeenCalled();
+  });
+
   test("uses persisted mailbox shortcuts for movement, mutation, and focus", async () => {
     useUiPrefs.setState({
       keybindings: {
@@ -312,6 +338,28 @@ describe("MailboxList keyboard selection", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "Star" }), { key: "Enter" });
 
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  test("row checkboxes let mailbox action shortcuts bubble", () => {
+    const onKeyDown = vi.fn<(event: unknown) => void>();
+    render(
+      <div onKeyDown={onKeyDown}>
+        <MailboxRow
+          row={rows[0]!}
+          selected
+          focused={false}
+          onOpen={vi.fn<() => void>()}
+          onFocusPane={vi.fn<() => void>()}
+          onToggleSelection={vi.fn<(shift: boolean) => void>()}
+        />
+      </div>,
+    );
+
+    const checkbox = screen.getByRole("checkbox", { name: /deselect message/i });
+    fireEvent.keyDown(checkbox, { key: "r" });
+    fireEvent.keyDown(checkbox, { key: "u" });
+
+    expect(onKeyDown).toHaveBeenCalledTimes(2);
   });
 
   test("keeps the selected checkbox checked while the row is hovered", () => {

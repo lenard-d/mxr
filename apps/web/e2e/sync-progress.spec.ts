@@ -4,7 +4,7 @@ import { openApp, readE2EState } from "./helpers/state";
 
 test("manual sync shows mailbox progress until completion", async ({ page }) => {
   await openApp(page, "/m/inbox");
-  await expect(page.getByRole("complementary").getByText(/^connected$/i)).toBeVisible();
+  await expect(page.getByRole("img", { name: /^connection: connected$/i })).toBeVisible();
   await expect(page.getByRole("article").first()).toBeVisible();
 
   const { token } = readE2EState();
@@ -12,11 +12,14 @@ test("manual sync shows mailbox progress until completion", async ({ page }) => 
     headers: { authorization: `Bearer ${token}` },
   });
 
-  const banner = page.locator("[data-sync-banner]");
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText(/^Syncing \d+ of \d+ messages$/);
+  const progress = page.locator("[data-sync-progress]");
+  await expect(progress).toBeVisible();
+  await expect(progress).toContainText(/^Syncing \d+ of \d+$/);
+  await expect(page.getByRole("button", { name: "Fetch new mail" }).locator("svg")).toHaveClass(
+    /animate-spin/,
+  );
 
   const response = await syncResponse;
   expect(response.ok(), await response.text()).toBe(true);
-  await expect(banner).toBeHidden({ timeout: 5_000 });
+  await expect(progress).toBeHidden({ timeout: 5_000 });
 });

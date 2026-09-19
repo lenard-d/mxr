@@ -11,8 +11,15 @@ const accountsApi = vi.hoisted(() => ({
   fetchAccounts: vi.fn<() => Promise<unknown>>(),
 }));
 
+const router = vi.hoisted(() => ({ pathname: "/mail/all/inbox" }));
+
 vi.mock("@/features/accounts/api", () => ({
   fetchAccounts: accountsApi.fetchAccounts,
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
+    select({ location: { pathname: router.pathname } }),
 }));
 
 function renderWithQueryClient(children: ReactNode) {
@@ -24,6 +31,7 @@ function renderWithQueryClient(children: ReactNode) {
 
 describe("AccountSwitcher", () => {
   beforeEach(() => {
+    router.pathname = "/mail/all/inbox";
     accountsApi.fetchAccounts.mockResolvedValue({
       accounts: [
         {
@@ -79,5 +87,15 @@ describe("AccountSwitcher", () => {
       "bg-transparent",
     );
     expect(screen.queryByText(/no accounts loaded/i)).not.toBeInTheDocument();
+  });
+
+  test("shows the account selected by the current mailbox URL", async () => {
+    router.pathname = "/mail/personal/inbox";
+
+    renderWithQueryClient(<AccountSwitcher />);
+
+    expect(await screen.findByText("Personal")).toBeVisible();
+    expect(screen.getByText("me@example.com")).toBeVisible();
+    expect(screen.queryByText("Work")).not.toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ import {
 import { useState, type ReactNode } from "react";
 
 import { SnoozeDialog } from "./SnoozeDialog";
+import { SyncProgressPill } from "./SyncProgressBanner";
 import type { MessageRowView } from "./types";
 import type { MailAction } from "./useOptimisticMailMutation";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
@@ -26,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSelection } from "@/state/selectionStore";
+import { useConnectionStore } from "@/state/connectionStore";
 
 const actions: Array<{ action: MailAction; label: string; icon: typeof Archive }> = [
   { action: "archive", label: "Archive", icon: Archive },
@@ -55,6 +57,7 @@ export function BulkActionBar({
   const ids = useSelection((state) => state.ids);
   const clear = useSelection((state) => state.clear);
   const selectMany = useSelection((state) => state.selectMany);
+  const syncInProgress = useConnectionStore((state) => Boolean(state.syncProgress));
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const hasLoadedRows = rows !== undefined;
   const selected = hasLoadedRows
@@ -129,17 +132,23 @@ export function BulkActionBar({
               <X className="size-3.5" />
             </Button>
           </>
-        ) : onRefresh ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title="Fetch new mail"
-            aria-label="Fetch new mail"
-            onClick={onRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className={refreshing ? "size-4 animate-spin" : "size-4"} />
-          </Button>
+        ) : null}
+        {onRefresh && (selected.length === 0 || syncInProgress) ? (
+          <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title="Fetch new mail"
+              aria-label="Fetch new mail"
+              onClick={onRefresh}
+              disabled={refreshing || syncInProgress}
+            >
+              <RefreshCw
+                className={refreshing || syncInProgress ? "size-4 animate-spin" : "size-4"}
+              />
+            </Button>
+            <SyncProgressPill />
+          </>
         ) : null}
         {trailing ? <div className="ml-auto flex shrink-0 items-center">{trailing}</div> : null}
       </div>

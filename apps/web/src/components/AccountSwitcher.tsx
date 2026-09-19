@@ -1,5 +1,6 @@
 import { ChevronDown, Mail, UserPlus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -12,17 +13,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fetchAccounts } from "@/features/accounts/api";
-import { accountKeyFor, buildMailInboxPath } from "@/features/mailbox/location";
+import {
+  accountKeyFor,
+  buildMailInboxPath,
+  parseMailLocation,
+  resolveMailAccount,
+} from "@/features/mailbox/location";
 import { domainFaviconUrls } from "@/lib/emailDomain";
 
 export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: fetchAccounts,
     staleTime: 60_000,
   });
   const rows = accounts.data?.accounts ?? [];
-  const account =
+  const location = parseMailLocation(pathname);
+  const accountResolution = resolveMailAccount(location?.accountKey, rows);
+  const account = (accountResolution.status === "resolved"
+    ? accountResolution.account
+    : undefined) ??
     rows.find((row) => row.enabled && row.is_default) ??
     rows.find((row) => row.enabled) ??
     rows[0] ?? { name: "All accounts", email: "" };

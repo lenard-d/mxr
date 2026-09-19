@@ -43,10 +43,18 @@ pub(super) async fn status(
 pub(super) async fn shell(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(auth): Query<AuthQuery>,
+    Query(query): Query<ShellQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
-    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let lens = MailboxLensRequest::default();
+    ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
+    let account_id = query
+        .account_id
+        .as_deref()
+        .map(routes_v6::parse_account_id)
+        .transpose()?;
+    let lens = MailboxLensRequest {
+        account_id,
+        ..MailboxLensRequest::default()
+    };
     let chrome = build_bridge_chrome(&state.config.socket_path, &lens).await?;
     Ok(Json(json!({
         "shell": chrome.shell,

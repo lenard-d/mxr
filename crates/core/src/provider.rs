@@ -11,6 +11,15 @@ pub trait MailSyncProvider: Send + Sync {
     fn account_id(&self) -> &AccountId;
     fn capabilities(&self) -> SyncCapabilities;
 
+    /// Whether sync assigns every message to one or more stable label rows.
+    ///
+    /// This is separate from `capabilities().mutate.labels`: folder-based
+    /// providers can rebuild `message_labels` even when label mutations map
+    /// to mailbox moves instead of multi-label operations.
+    fn syncs_message_labels(&self) -> bool {
+        self.capabilities().mutate.labels
+    }
+
     /// Render an opaque cursor as a one-line human-readable string for
     /// daemon logs, `mxr doctor` output, and the status surface clients
     /// see. Adapters that own a structured private cursor (Gmail

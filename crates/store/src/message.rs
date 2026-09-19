@@ -1020,6 +1020,83 @@ impl super::Store {
         Ok(row.cnt as u32)
     }
 
+    /// Count label associations for one account.
+    pub async fn count_message_labels_by_account(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<u32, sqlx::Error> {
+        let aid = account_id.as_str();
+        let row = sqlx::query(
+            r#"
+            SELECT COUNT(*) AS cnt
+            FROM message_labels ml
+            JOIN messages m ON m.id = ml.message_id
+            WHERE m.account_id = ?
+            "#,
+        )
+        .bind(aid)
+        .fetch_one(self.reader())
+        .await?;
+        Ok(row.get::<i64, _>("cnt") as u32)
+    }
+
+    /// Count messages in one account that have no label association.
+    pub async fn count_unlabeled_messages_by_account(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<u32, sqlx::Error> {
+        let row = sqlx::query(
+            r#"
+            SELECT COUNT(*) AS cnt
+            FROM messages m
+            WHERE m.account_id = ?
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM message_labels ml
+                  WHERE ml.message_id = m.id
+              )
+            "#,
+        )
+        .bind(account_id.as_str())
+        .fetch_one(self.reader())
+        .await?;
+        Ok(row.get::<i64, _>("cnt") as u32)
+    }
+
+    /// Attach currently unlabeled messages to a canonical provider label.
+    ///
+    /// This is the conservative terminal fallback after a complete provider
+    /// backfill. Messages no longer returned by the provider cannot recover
+    /// their former labels, but retaining them in `ALL` is safer than either
+    /// deleting local history or retrying a full repair forever.
+    pub async fn attach_unlabeled_messages_to_provider_label(
+        &self,
+        account_id: &AccountId,
+        provider_label_id: &str,
+    ) -> Result<u32, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO message_labels (message_id, label_id)
+            SELECT m.id, l.id
+            FROM messages m
+            JOIN labels l
+              ON l.account_id = m.account_id
+             AND l.provider_id = ?
+            WHERE m.account_id = ?
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM message_labels ml
+                  WHERE ml.message_id = m.id
+              )
+            "#,
+        )
+        .bind(provider_label_id)
+        .bind(account_id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() as u32)
+    }
+
     /// Mark a message as trashed (update flags).
     ///
     /// Emits `Trashed` to `message_events` only when the TRASH bit was clear;
