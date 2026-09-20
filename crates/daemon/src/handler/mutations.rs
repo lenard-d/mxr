@@ -2559,21 +2559,36 @@ async fn draft_from_server_snapshot(
 fn exact_provider_draft_bodies(
     parsed: &mail_parser::Message<'_>,
 ) -> (Option<String>, Option<String>) {
-    let text = parsed.text_body.iter().find_map(|part_id| {
-        let part = parsed.parts.get(*part_id as usize)?;
-        match &part.body {
-            PartType::Text(body) if is_plain_text_part(part) => Some(body.to_string()),
-            _ => None,
+    let mut bodies = (None, None);
+    collect_provider_draft_bodies(parsed, 0, &mut bodies);
+    bodies
+}
+
+fn collect_provider_draft_bodies(
+    parsed: &mail_parser::Message<'_>,
+    part_id: u32,
+    bodies: &mut (Option<String>, Option<String>),
+) {
+    let Some(part) = parsed.parts.get(part_id as usize) else {
+        return;
+    };
+    if is_remote_attachment_part(part, remote_attachment_disposition(part)) {
+        return;
+    }
+    match &part.body {
+        PartType::Multipart(children) => {
+            for child_id in children {
+                collect_provider_draft_bodies(parsed, *child_id, bodies);
+            }
         }
-    });
-    let html = parsed.html_body.iter().find_map(|part_id| {
-        let part = parsed.parts.get(*part_id as usize)?;
-        match &part.body {
-            PartType::Html(body) => Some(body.to_string()),
-            _ => None,
+        PartType::Text(body) if bodies.0.is_none() && is_plain_text_part(part) => {
+            bodies.0 = Some(body.to_string());
         }
-    });
-    (text, html)
+        PartType::Html(body) if bodies.1.is_none() => {
+            bodies.1 = Some(body.to_string());
+        }
+        _ => {}
+    }
 }
 
 fn is_plain_text_part(part: &mail_parser::MessagePart<'_>) -> bool {
@@ -2709,6 +2724,19 @@ mod remote_draft_mime_tests {
         assert!(matches!(
             content,
             DraftContent::Html { html, text: None } if html.contains("<p>Hello</p>")
+        ));
+    }
+
+    #[test]
+    fn attached_multipart_descendants_are_not_selected_as_the_body() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n--outer\r\nContent-Type: multipart/alternative; boundary=nested\r\nContent-Disposition: attachment; filename=\"nested.mime\"\r\n\r\n--nested\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nNested attachment text\r\n--nested\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Nested attachment HTML</p>\r\n--nested--\r\n--outer\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Actual HTML body</p>\r\n--outer--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let (text, html) = exact_provider_draft_bodies(&parsed);
+        let content = imported_provider_draft_content(None, text, html);
+
+        assert!(matches!(
+            content,
+            DraftContent::Html { html, text: None } if html.contains("Actual HTML body")
         ));
     }
 
