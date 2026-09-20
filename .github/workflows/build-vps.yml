@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - lenard/mail-workspace
+      - main
 
 permissions:
   contents: read
