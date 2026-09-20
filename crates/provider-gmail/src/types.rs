@@ -15,6 +15,19 @@ pub struct GmailMessageRef {
     pub thread_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GmailDraftListResponse {
+    pub drafts: Option<Vec<GmailDraftRef>>,
+    pub next_page_token: Option<String>,
+    pub result_size_estimate: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GmailDraftRef {
+    pub id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GmailMessage {

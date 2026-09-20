@@ -1858,7 +1858,7 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
 /// CLI surfaces what would be auto-reset, only earlier.
 pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
     let cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
-    let orphan_ids = state.store.list_orphaned_sending_drafts(cutoff).await?;
+    let orphan_ids = state.store.list_drafts_requiring_resolution(cutoff).await?;
     let mut drafts = Vec::with_capacity(orphan_ids.len());
     for id in &orphan_ids {
         if let Some(draft) = state.store.get_draft(id).await? {
@@ -2000,12 +2000,31 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
         ));
     }
 
+    let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
+    match state.store.get_draft_status(&draft.id).await? {
+        Some(DraftStatus::Draft) => {}
+        Some(DraftStatus::Sending) => {
+            return Err(crate::handler::HandlerError::Message(
+                "draft is sending and cannot be edited".to_string(),
+            ))
+        }
+        Some(DraftStatus::Sent) => {
+            return Err(crate::handler::HandlerError::Message(
+                "draft has been sent and cannot be edited".to_string(),
+            ))
+        }
+        None => {
+            return Err(crate::handler::HandlerError::Message(format!(
+                "Draft not found: {}",
+                draft.id
+            )))
+        }
+    }
     let mut draft = Cow::Borrowed(draft);
     let mut updated_provider_revision = None;
     if let Some((provider_draft_id, _)) = state.store.get_provider_draft_link(&draft.id).await? {
         let sender = state.send_provider_for_account(&draft.account_id)?;
         let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
-        let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
         // Not persisted here: the trailing `store.update_draft` writes the
         // whole draft on success, and an early return on provider failure
         // leaves the stored row untouched.
@@ -2022,17 +2041,30 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
                     .map(|snapshot| snapshot.revision);
             }
             Err(MxrError::NotFound(_)) => {
-                let replacement_id = sender
-                    .save_draft(&draft, &from)
-                    .await?
-                    .ok_or_else(|| "Provider did not recreate the linked draft".to_string())?;
+                let message_id = ensure_draft_message_id(state, &draft.id, &from).await?;
+                let replacement_id = match sender.find_draft_by_message_id(&message_id).await? {
+                    Some(provider_draft_id) => {
+                        sender
+                            .update_draft(&provider_draft_id, &draft, &from)
+                            .await?;
+                        provider_draft_id
+                    }
+                    None => sender
+                        .save_draft_with_message_id(&draft, &from, &message_id)
+                        .await?
+                        .ok_or_else(|| "Provider did not recreate the linked draft".to_string())?,
+                };
                 // Point at the replacement before touching the local content.
                 // If the local UPDATE then fails, the next sync can still pull
                 // the replacement rather than deleting the canonical row.
-                state
+                let duplicate_ids = state
                     .store
-                    .set_provider_draft_link(&draft.id, &replacement_id, None)
-                    .await?;
+                    .claim_provider_draft_link(&draft.id, &replacement_id, None)
+                    .await?
+                    .ok_or_else(|| format!("Draft not found: {}", draft.id))?;
+                for duplicate_id in duplicate_ids {
+                    remove_provider_draft_cache(state, &duplicate_id).await;
+                }
                 updated_provider_revision = sender
                     .fetch_draft(&replacement_id)
                     .await
@@ -2077,12 +2109,25 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
 }
 
 pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId) -> HandlerResult {
+    let Some(initial_draft) = state.store.get_draft(draft_id).await? else {
+        return Ok(ResponseData::Ack);
+    };
+    let _provider_guard = state
+        .acquire_provider_operation(&initial_draft.account_id)
+        .await;
     let Some(draft) = state.store.get_draft(draft_id).await? else {
         return Ok(ResponseData::Ack);
     };
+    if !matches!(
+        state.store.get_draft_status(draft_id).await?,
+        Some(DraftStatus::Draft)
+    ) {
+        return Err(crate::handler::HandlerError::Message(
+            "draft is sending or sent and cannot be deleted".to_string(),
+        ));
+    }
     if let Some(provider_draft_id) = state.store.get_provider_draft_id(draft_id).await? {
         let sender = state.send_provider_for_account(&draft.account_id)?;
-        let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
         match sender.delete_draft(&provider_draft_id).await {
             Ok(()) | Err(MxrError::NotFound(_)) => {}
             Err(error) => {
@@ -2098,97 +2143,268 @@ pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId)
     Ok(ResponseData::Ack)
 }
 
-/// Remove linked local drafts whose provider draft was deleted outside mxr.
-/// Lookup errors preserve every local row; only an explicit provider 404 is
+/// Discover provider drafts, import unknown ones, pull changed linked drafts,
+/// and remove linked local drafts deleted outside mxr. Listing and lookup
+/// errors preserve every local row; only an explicit provider 404 is
 /// destructive.
 pub(crate) async fn reconcile_provider_drafts(
     state: &AppState,
     account_id: &mxr_core::AccountId,
 ) -> Result<u32, String> {
-    let links = state
+    let sender = match state.send_provider_for_account(account_id) {
+        Ok(sender) if sender.supports_server_drafts() => sender,
+        _ => return Ok(0),
+    };
+    let _provider_guard = state.acquire_provider_operation(account_id).await;
+    let mut provider_ids = sender
+        .list_draft_ids()
+        .await
+        .map_err(|error| format!("failed to list provider drafts: {error}"))?
+        .into_iter()
+        .collect::<HashSet<_>>();
+    let linked_rows = state
         .store
         .list_provider_draft_links(account_id)
         .await
         .map_err(|error| error.to_string())?;
-    if links.is_empty() {
-        return Ok(0);
+    let mut links: HashMap<String, Vec<(mxr_core::DraftId, Option<String>)>> = HashMap::new();
+    for (local_id, provider_id, revision) in linked_rows {
+        links
+            .entry(provider_id)
+            .or_default()
+            .push((local_id, revision));
     }
 
-    let sender = state.send_provider_for_account(account_id)?;
-    let _provider_guard = state.acquire_provider_operation(account_id).await;
+    if provider_ids.is_empty() && links.is_empty() {
+        return Ok(0);
+    }
+    // Provider discovery finds unlinked drafts. Existing links are added to
+    // the verification set independently: a draft is deleted locally only
+    // after its direct resource lookup returns an explicit not-found, never
+    // merely because a list response omitted it.
+    provider_ids.extend(links.keys().cloned());
+
     let mut removed = 0;
-    for (local_draft_id, provider_draft_id, stored_revision) in links {
-        match sender.fetch_draft(&provider_draft_id).await {
-            Ok(Some(snapshot))
-                if stored_revision.as_deref() == Some(snapshot.revision.as_str()) => {}
-            Ok(Some(snapshot)) if stored_revision.is_none() => {
-                // A link created by an older mxr version has no baseline. Its
-                // current provider version corresponds to the local draft, so
-                // record it without rewriting content on the first sync.
-                state
+    for provider_draft_id in provider_ids {
+        let mut linked = links.remove(&provider_draft_id);
+        let snapshot = sender
+            .fetch_draft(&provider_draft_id)
+            .await
+            .map_err(|error| {
+                format!("failed to verify provider draft {provider_draft_id}: {error}")
+            })?;
+        if let Some(snapshot) = snapshot.as_ref() {
+            if let Some(message_id) = provider_snapshot_message_id(snapshot) {
+                if let Some(canonical_id) = state
                     .store
-                    .set_provider_draft_revision(&local_draft_id, &snapshot.revision)
-                    .await
-                    .map_err(|error| error.to_string())?;
-            }
-            Ok(Some(snapshot)) => {
-                let local = state
-                    .store
-                    .get_draft(&local_draft_id)
-                    .await
-                    .map_err(|error| error.to_string())?
-                    .ok_or_else(|| format!("linked local draft {local_draft_id} disappeared"))?;
-                let updated = draft_from_server_snapshot(state, &local, &snapshot).await?;
-                if !state
-                    .store
-                    .update_draft(&updated)
+                    .find_draft_by_message_id_header(account_id, &message_id)
                     .await
                     .map_err(|error| error.to_string())?
                 {
-                    return Err(format!(
-                        "linked local draft {local_draft_id} is not editable"
-                    ));
+                    let already_linked = linked.as_ref().is_some_and(|rows| {
+                        rows.iter().any(|(draft_id, _)| draft_id == &canonical_id)
+                    });
+                    if !already_linked {
+                        let duplicate_ids = state
+                            .store
+                            .claim_provider_draft_link(
+                                &canonical_id,
+                                &provider_draft_id,
+                                Some(&snapshot.revision),
+                            )
+                            .await
+                            .map_err(|error| error.to_string())?
+                            .ok_or_else(|| {
+                                format!(
+                                    "draft {canonical_id} disappeared while adopting provider draft"
+                                )
+                            })?;
+                        for duplicate_id in duplicate_ids {
+                            remove_provider_draft_cache(state, &duplicate_id).await;
+                        }
+                        // Force one pull so a provider-side edit made during a
+                        // crash window wins over the pre-create local snapshot.
+                        linked = Some(vec![(
+                            canonical_id,
+                            Some("__adopt_remote_snapshot__".to_string()),
+                        )]);
+                    }
                 }
-                state
-                    .store
-                    .set_provider_draft_revision(&local_draft_id, &snapshot.revision)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                prune_provider_draft_cache(state, &local_draft_id, &updated).await;
-                tracing::info!(
-                    %local_draft_id,
-                    provider_draft_id,
-                    revision = snapshot.revision,
-                    "Pulled provider-side draft edit into local draft"
-                );
-            }
-            Ok(None) => {
-                state
-                    .store
-                    .delete_draft(&local_draft_id)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                removed += 1;
-                tracing::info!(
-                    %local_draft_id,
-                    provider_draft_id,
-                    "Removed local draft after provider-side deletion"
-                );
-                remove_provider_draft_cache(state, &local_draft_id).await;
-            }
-            Err(error) => {
-                return Err(format!(
-                    "failed to verify provider draft {provider_draft_id}: {error}"
-                ))
             }
         }
+        match (linked, snapshot) {
+            (Some(linked_drafts), Some(snapshot)) => {
+                if linked_drafts.len() > 1 {
+                    tracing::warn!(
+                        provider_draft_id,
+                        local_draft_count = linked_drafts.len(),
+                        "Reconciling duplicate local links left by an earlier draft race"
+                    );
+                }
+                for (local_draft_id, stored_revision) in linked_drafts {
+                    match state
+                        .store
+                        .get_draft_status(&local_draft_id)
+                        .await
+                        .map_err(|error| error.to_string())?
+                    {
+                        Some(DraftStatus::Draft) => {}
+                        Some(status) => {
+                            tracing::debug!(
+                                %local_draft_id,
+                                provider_draft_id,
+                                ?status,
+                                "Deferred provider draft pull while local draft is not editable"
+                            );
+                            continue;
+                        }
+                        None => {
+                            tracing::debug!(
+                                %local_draft_id,
+                                provider_draft_id,
+                                "Skipped provider draft pull after local row disappeared"
+                            );
+                            continue;
+                        }
+                    }
+                    if stored_revision.as_deref() == Some(snapshot.revision.as_str()) {
+                        continue;
+                    }
+                    if stored_revision.is_none() {
+                        // Older links have no baseline. Record one without
+                        // replacing potentially newer local content.
+                        state
+                            .store
+                            .set_provider_draft_revision(&local_draft_id, &snapshot.revision)
+                            .await
+                            .map_err(|error| error.to_string())?;
+                        continue;
+                    }
+                    let local = state
+                        .store
+                        .get_draft(&local_draft_id)
+                        .await
+                        .map_err(|error| error.to_string())?
+                        .ok_or_else(|| {
+                            format!("linked local draft {local_draft_id} disappeared")
+                        })?;
+                    let updated = draft_from_server_snapshot(
+                        state,
+                        account_id,
+                        &local_draft_id,
+                        Some(&local),
+                        &snapshot,
+                    )
+                    .await?;
+                    if !state
+                        .store
+                        .update_draft(&updated)
+                        .await
+                        .map_err(|error| error.to_string())?
+                    {
+                        return Err(format!(
+                            "linked local draft {local_draft_id} is not editable"
+                        ));
+                    }
+                    state
+                        .store
+                        .set_provider_draft_revision(&local_draft_id, &snapshot.revision)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    prune_provider_draft_cache(state, &local_draft_id, &updated).await;
+                    tracing::info!(
+                        %local_draft_id,
+                        provider_draft_id,
+                        revision = snapshot.revision,
+                        "Pulled provider-side draft edit into local draft"
+                    );
+                }
+            }
+            (None, Some(snapshot)) => {
+                let local_draft_id = mxr_core::DraftId::new();
+                let imported =
+                    draft_from_server_snapshot(state, account_id, &local_draft_id, None, &snapshot)
+                        .await?;
+                let inserted = match state
+                    .store
+                    .insert_provider_draft(&imported, &provider_draft_id, &snapshot.revision)
+                    .await
+                {
+                    Ok(inserted) => inserted,
+                    Err(error) => {
+                        remove_provider_draft_cache(state, &local_draft_id).await;
+                        return Err(error.to_string());
+                    }
+                };
+                if !inserted {
+                    // Another process imported the same provider draft between
+                    // discovery and insertion. Keep its linked row and discard
+                    // only this process's temporary attachment cache.
+                    remove_provider_draft_cache(state, &local_draft_id).await;
+                    continue;
+                }
+                if let Some(message_id) = provider_snapshot_message_id(&snapshot) {
+                    state
+                        .store
+                        .set_draft_message_id_header(&local_draft_id, &message_id)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                }
+                tracing::info!(
+                    %local_draft_id,
+                    provider_draft_id,
+                    "Imported provider-side draft into local draft store"
+                );
+            }
+            (Some(linked_drafts), None) => {
+                for (local_draft_id, _) in linked_drafts {
+                    let deleted = state
+                        .store
+                        .delete_editable_draft(&local_draft_id)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    if deleted {
+                        removed += 1;
+                        tracing::info!(
+                            %local_draft_id,
+                            provider_draft_id,
+                            "Removed local draft after provider-side deletion"
+                        );
+                        remove_provider_draft_cache(state, &local_draft_id).await;
+                    } else {
+                        tracing::debug!(
+                            %local_draft_id,
+                            provider_draft_id,
+                            "Kept non-editable local draft despite provider-side deletion"
+                        );
+                    }
+                }
+            }
+            (None, None) => {}
+        }
     }
+
     Ok(removed)
+}
+
+fn provider_snapshot_message_id(snapshot: &ServerDraftSnapshot) -> Option<String> {
+    let parsed = MessageParser::default().parse(&snapshot.raw_rfc822)?;
+    let message_id = parsed.message_id()?.trim();
+    if message_id.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "<{}>",
+            message_id.trim_start_matches('<').trim_end_matches('>')
+        ))
+    }
 }
 
 async fn draft_from_server_snapshot(
     state: &AppState,
-    existing: &Draft,
+    account_id: &mxr_core::AccountId,
+    draft_id: &mxr_core::DraftId,
+    existing: Option<&Draft>,
     snapshot: &ServerDraftSnapshot,
 ) -> Result<Draft, String> {
     let parsed = MessageParser::default()
@@ -2201,8 +2417,10 @@ async fn draft_from_server_snapshot(
 
     let text = parsed.body_text(0).map(std::borrow::Cow::into_owned);
     let html = parsed.body_html(0).map(std::borrow::Cow::into_owned);
-    let content = match (&existing.content, html, text) {
-        (DraftContent::Html { .. }, Some(html), text) => DraftContent::html(html, text),
+    let content = match (existing.map(|draft| &draft.content), html, text) {
+        (Some(DraftContent::Html { .. }) | None, Some(html), text) => {
+            DraftContent::html(html, text)
+        }
         (_, _, Some(text)) => DraftContent::markdown(text),
         (_, Some(html), None) => DraftContent::html(html, None),
         _ => DraftContent::markdown(String::new()),
@@ -2211,7 +2429,7 @@ async fn draft_from_server_snapshot(
     let revision_dir = state
         .attachment_dir()
         .join("provider-drafts")
-        .join(existing.id.as_str())
+        .join(draft_id.as_str())
         .join(uuid::Uuid::now_v7().to_string());
     let mut attachments = Vec::new();
     let mut inline_assets = Vec::new();
@@ -2227,15 +2445,21 @@ async fn draft_from_server_snapshot(
             .await
             .map_err(|error| error.to_string())?;
         let attachment_id =
-            AttachmentId::from_provider_id("provider-draft", &format!("{}:{index}", existing.id));
-        let filename = part
-            .attachment_name()
-            .map_or_else(|| format!("attachment-{index}"), str::to_string);
+            AttachmentId::from_provider_id("provider-draft", &format!("{draft_id}:{index}"));
+        let filename = remote_attachment_filename(part, index);
         let path = revision_dir.join(super::sanitized_attachment_filename(
             &filename,
             &attachment_id,
         ));
-        tokio::fs::write(&path, part.contents())
+        let bytes = if part.is_multipart() {
+            parsed
+                .raw_message
+                .get(part.offset_header as usize..part.offset_end as usize)
+                .ok_or_else(|| "provider multipart attachment has invalid offsets".to_string())?
+        } else {
+            part.contents()
+        };
+        tokio::fs::write(&path, bytes)
             .await
             .map_err(|error| error.to_string())?;
         super::set_private_file_permissions(&path)
@@ -2243,7 +2467,7 @@ async fn draft_from_server_snapshot(
             .map_err(|error| error.to_string())?;
 
         let content_id = part.content_id().and_then(normalize_remote_content_id);
-        if matches!(disposition, AttachmentDisposition::Inline) {
+        if is_remote_inline_asset(disposition, content_id.as_deref()) {
             if let Some(cid) = content_id {
                 inline_assets.push(InlineAsset { cid, path });
                 continue;
@@ -2252,20 +2476,36 @@ async fn draft_from_server_snapshot(
         attachments.push(path);
     }
 
-    let reply_headers = headers.in_reply_to.map(|in_reply_to| ReplyHeaders {
+    let reply_headers = headers.in_reply_to.clone().map(|in_reply_to| ReplyHeaders {
         in_reply_to,
         references: headers.references,
-        thread_id: existing
-            .reply_headers
-            .as_ref()
-            .and_then(|reply| reply.thread_id.clone()),
+        thread_id: snapshot.thread_id.clone().or_else(|| {
+            existing.and_then(|draft| {
+                draft
+                    .reply_headers
+                    .as_ref()
+                    .and_then(|reply| reply.thread_id.clone())
+            })
+        }),
     });
+    let now = chrono::Utc::now();
     Ok(Draft {
-        id: existing.id.clone(),
-        account_id: existing.account_id.clone(),
-        from: headers.from.or_else(|| existing.from.clone()),
+        id: draft_id.clone(),
+        account_id: account_id.clone(),
+        from: headers
+            .from
+            .or_else(|| existing.and_then(|draft| draft.from.clone())),
         reply_headers,
-        intent: existing.intent,
+        intent: existing.map_or_else(
+            || {
+                if headers.in_reply_to.is_some() {
+                    mxr_core::DraftIntent::Reply
+                } else {
+                    mxr_core::DraftIntent::New
+                }
+            },
+            |draft| draft.intent,
+        ),
         to: headers.to,
         cc: headers.cc,
         bcc: headers.bcc,
@@ -2273,9 +2513,9 @@ async fn draft_from_server_snapshot(
         content,
         attachments,
         inline_assets,
-        inline_calendar_reply: existing.inline_calendar_reply.clone(),
-        created_at: existing.created_at,
-        updated_at: chrono::Utc::now(),
+        inline_calendar_reply: existing.and_then(|draft| draft.inline_calendar_reply.clone()),
+        created_at: existing.map_or(headers.date, |draft| draft.created_at),
+        updated_at: now,
     })
 }
 
@@ -2291,8 +2531,12 @@ fn is_remote_attachment_part(
     part: &mail_parser::MessagePart<'_>,
     disposition: AttachmentDisposition,
 ) -> bool {
-    if part.is_multipart() || part.is_message() {
-        return false;
+    if part.is_multipart() {
+        return matches!(disposition, AttachmentDisposition::Attachment)
+            || part.attachment_name().is_some();
+    }
+    if part.is_message() {
+        return true;
     }
     matches!(
         disposition,
@@ -2304,6 +2548,109 @@ fn is_remote_attachment_part(
 fn normalize_remote_content_id(value: &str) -> Option<String> {
     let value = value.trim().trim_start_matches('<').trim_end_matches('>');
     (!value.is_empty()).then(|| value.to_string())
+}
+
+fn remote_attachment_filename(part: &mail_parser::MessagePart<'_>, index: usize) -> String {
+    if part.is_multipart() {
+        let name = part
+            .attachment_name()
+            .map_or_else(|| format!("attachment-{index}"), str::to_string);
+        return if name.to_ascii_lowercase().ends_with(".eml") {
+            name
+        } else {
+            format!("{name}.eml")
+        };
+    }
+    if part.is_message() {
+        let name = part
+            .attachment_name()
+            .map_or_else(|| format!("attachment-{index}"), str::to_string);
+        return if name.to_ascii_lowercase().ends_with(".eml") {
+            name
+        } else {
+            format!("{name}.eml")
+        };
+    }
+    if let Some(filename) = part.attachment_name() {
+        return filename.to_string();
+    }
+    let mime_type = part.content_type().map_or_else(
+        || "application/octet-stream".to_string(),
+        |content_type| {
+            let subtype = content_type.subtype().unwrap_or("octet-stream");
+            format!("{}/{subtype}", content_type.ctype())
+        },
+    );
+    let extension = mime_guess::get_mime_extensions_str(&mime_type)
+        .and_then(|extensions| extensions.first().copied());
+    extension.map_or_else(
+        || format!("attachment-{index}.bin"),
+        |extension| format!("attachment-{index}.{extension}"),
+    )
+}
+
+fn is_remote_inline_asset(disposition: AttachmentDisposition, content_id: Option<&str>) -> bool {
+    !matches!(disposition, AttachmentDisposition::Attachment) && content_id.is_some()
+}
+
+#[cfg(test)]
+mod remote_draft_mime_tests {
+    use super::*;
+
+    #[test]
+    fn message_rfc822_without_disposition_or_name_is_importable() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nbody\r\n--x\r\nContent-Type: message/rfc822\r\n\r\nFrom: sender@example.com\r\nTo: user@example.com\r\nSubject: forwarded\r\n\r\nmessage\r\n--x--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let part = parsed.parts.iter().find(|part| part.is_message()).unwrap();
+
+        assert!(is_remote_attachment_part(
+            part,
+            remote_attachment_disposition(part)
+        ));
+        assert_eq!(remote_attachment_filename(part, 2), "attachment-2.eml");
+    }
+
+    #[test]
+    fn named_message_rfc822_part_always_gets_an_eml_extension() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: message/rfc822\r\nContent-Disposition: attachment; filename=forwarded\r\n\r\nFrom: sender@example.com\r\nSubject: forwarded\r\n\r\nmessage\r\n--x--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let part = parsed.parts.iter().find(|part| part.is_message()).unwrap();
+
+        assert_eq!(remote_attachment_filename(part, 1), "forwarded.eml");
+    }
+
+    #[test]
+    fn content_id_without_inline_disposition_remains_inline() {
+        assert!(is_remote_inline_asset(
+            AttachmentDisposition::Unspecified,
+            Some("image001.png@example.com")
+        ));
+        assert!(!is_remote_inline_asset(
+            AttachmentDisposition::Attachment,
+            Some("image001.png@example.com")
+        ));
+    }
+
+    #[test]
+    fn attached_multipart_entity_is_preserved_as_an_eml_attachment() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n--outer\r\nContent-Type: text/plain\r\n\r\nBody\r\n--outer\r\nContent-Type: multipart/mixed; boundary=inner\r\nContent-Disposition: attachment; filename=\"bundle.mime\"\r\n\r\n--inner\r\nContent-Type: text/plain\r\n\r\nNested\r\n--inner--\r\n--outer--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let part = parsed
+            .parts
+            .iter()
+            .find(|part| {
+                part.is_multipart()
+                    && remote_attachment_disposition(*part) == AttachmentDisposition::Attachment
+            })
+            .unwrap();
+
+        assert!(is_remote_attachment_part(
+            part,
+            AttachmentDisposition::Attachment
+        ));
+        assert_eq!(remote_attachment_filename(part, 1), "bundle.mime.eml");
+        assert!(part.offset_end > part.offset_header);
+    }
 }
 
 async fn remove_provider_draft_cache(state: &AppState, draft_id: &mxr_core::DraftId) {
@@ -2731,6 +3078,22 @@ pub(super) async fn cancel_scheduled_send(
     Ok(ResponseData::Ack)
 }
 
+async fn ensure_draft_message_id(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    from: &mxr_core::Address,
+) -> Result<String, crate::handler::HandlerError> {
+    if let Some(existing) = state.store.get_draft_message_id_header(draft_id).await? {
+        return Ok(existing);
+    }
+    let generated = mxr_outbound::email::generate_message_id(from);
+    state
+        .store
+        .set_draft_message_id_header(draft_id, &generated)
+        .await?;
+    Ok(generated)
+}
+
 pub(crate) async fn send_stored_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
@@ -2740,11 +3103,36 @@ pub(crate) async fn send_stored_draft(
         return Ok(sent_draft_receipt_response(receipt));
     }
 
+    let initial_draft = state
+        .store
+        .get_draft(draft_id)
+        .await?
+        .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+    let account_id = initial_draft.account_id.clone();
+    let expected_provider_draft_id = state.store.get_provider_draft_id(draft_id).await?;
+    let _provider_guard = state.acquire_provider_operation(&account_id).await;
     let mut draft = state
         .store
         .get_draft(draft_id)
         .await?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+    if draft.account_id != account_id {
+        return Err(crate::handler::HandlerError::Message(
+            "draft account changed while waiting to send".to_string(),
+        ));
+    }
+    let provider_draft_id = state
+        .store
+        .get_provider_draft_link(draft_id)
+        .await?
+        .map(|(provider_draft_id, _)| provider_draft_id);
+    if expected_provider_draft_id.is_some()
+        && provider_draft_id.as_ref() != expected_provider_draft_id.as_ref()
+    {
+        return Err(crate::handler::HandlerError::Message(
+            "linked provider draft changed while waiting to send; retry".to_string(),
+        ));
+    }
 
     // Re-validated at the send choke point, not just on the way in: a row
     // could have been written by an older binary, or edited by a path that
@@ -2822,27 +3210,48 @@ pub(crate) async fn send_stored_draft(
             return Err(crate::handler::HandlerError::Message(e));
         }
     };
-    let rfc2822_message_id = match state.store.get_draft_message_id_header(draft_id).await? {
-        Some(existing) => existing,
-        None => {
-            let generated = mxr_outbound::email::generate_message_id(&from);
-            if let Err(e) = state
+    let rfc2822_message_id = match ensure_draft_message_id(state, draft_id, &from).await {
+        Ok(message_id) => message_id,
+        Err(error) => {
+            let _ = state
                 .store
-                .set_draft_message_id_header(draft_id, &generated)
-                .await
-            {
-                let _ = state
-                    .store
-                    .update_draft_status(draft_id, DraftStatus::Draft)
-                    .await;
-                return Err(crate::handler::HandlerError::Message(e.to_string()));
-            }
-            generated
+                .update_draft_status(draft_id, DraftStatus::Draft)
+                .await;
+            return Err(error);
         }
     };
+    // Mark the attempt ambiguous *before* the provider call. If the daemon
+    // dies during I/O, startup recovery must not make the draft retryable and
+    // risk a duplicate send. A definitive provider error clears this marker.
+    if !state
+        .store
+        .mark_draft_send_outcome_unknown(draft_id)
+        .await?
+    {
+        let _ = state
+            .store
+            .update_draft_status(draft_id, DraftStatus::Draft)
+            .await;
+        return Err(crate::handler::HandlerError::Message(
+            "draft state changed before provider send".to_string(),
+        ));
+    }
 
-    let receipt = match sender.send(&draft, &from, &rfc2822_message_id).await {
+    let send_result = match provider_draft_id.as_deref() {
+        Some(provider_draft_id) => {
+            sender
+                .send_server_draft(provider_draft_id, &draft, &from, &rfc2822_message_id)
+                .await
+        }
+        None => sender.send(&draft, &from, &rfc2822_message_id).await,
+    };
+    let receipt = match send_result {
         Ok(r) => r,
+        Err(MxrError::SendOutcomeUnknown(error)) => {
+            return Err(crate::handler::HandlerError::Message(format!(
+                "send outcome is unknown; draft requires explicit resolution before retrying: {error}"
+            )));
+        }
         Err(e) => {
             let _ = state
                 .store
@@ -2855,15 +3264,12 @@ pub(crate) async fn send_stored_draft(
 
     let local_message_id = match ingest_sent_message(state, &draft, &from, &receipt).await {
         Ok(id) => id,
-        Err(e) => {
-            // Local ingest failed. Send already happened on the wire; we move
-            // the draft to `Sent` (idempotent, prevents resend) but bubble the
-            // error so the user can re-sync.
-            let _ = state
-                .store
-                .update_draft_status(draft_id, DraftStatus::Sent)
-                .await;
-            return Err(format!("send succeeded but local ingest failed: {e}").into());
+        Err(error) => {
+            tracing::error!(
+                %error,
+                "send succeeded but local Sent ingestion failed; provider sync will recover it"
+            );
+            sent_message_id_fallback(&draft, &receipt)
         }
     };
 
@@ -2900,16 +3306,37 @@ pub(crate) async fn send_stored_draft(
             receipt.sent_at,
         )
         .await
-        .map_err(|e| format!("send succeeded but receipt persistence failed: {e}"))?;
-    log_non_fatal(
-        "send: failed to delete draft after a successful send (it may linger in the drafts list)",
-        state.store.delete_draft(draft_id).await,
-    );
+        .unwrap_or_else(|error| {
+            tracing::error!(
+                %error,
+                "send succeeded but receipt persistence failed; continuing final cleanup"
+            );
+        });
+    match state.store.delete_draft(draft_id).await {
+        Ok(()) => remove_provider_draft_cache(state, draft_id).await,
+        Err(error) => tracing::warn!(
+            %error,
+            "send: failed to delete draft after a successful send (it may linger in the drafts list)"
+        ),
+    }
     Ok(ResponseData::SendReceipt {
         local_message_id,
         provider_message_id: receipt.provider_message_id,
         rfc2822_message_id: receipt.rfc2822_message_id,
     })
+}
+
+fn sent_message_id_fallback(draft: &Draft, receipt: &SendReceipt) -> mxr_core::MessageId {
+    match receipt.provider_message_id.as_deref() {
+        Some(provider_id) => {
+            mxr_core::MessageId::from_scoped_provider_id(&draft.account_id, "gmail", provider_id)
+        }
+        None => mxr_core::MessageId::from_scoped_provider_id(
+            &draft.account_id,
+            "smtp-local",
+            &receipt.rfc2822_message_id,
+        ),
+    }
 }
 
 fn sent_draft_receipt_response(receipt: mxr_store::SentDraftReceipt) -> ResponseData {
@@ -3251,26 +3678,46 @@ async fn reply_parent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_c
 
 pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {
     validate_draft_content(draft)?;
-    let draft = &*materialize_text_alternative(draft);
-    let sender = match state.send_provider_for_account(&draft.account_id) {
+    let requested = materialize_text_alternative(draft);
+    let sender = match state.send_provider_for_account(&requested.account_id) {
         Ok(sender) => sender,
         Err(error) => {
             tracing::info!(error, "No server draft provider; saving local draft");
-            return if state.store.get_draft(&draft.id).await?.is_some() {
+            return if state.store.get_draft(&requested.id).await?.is_some() {
                 Ok(ResponseData::Ack)
             } else {
-                save_draft(state, draft).await
+                save_draft(state, &requested).await
             };
         }
     };
-    // Validate the per-message From (owned-address) exactly like the send
-    // path — an unvalidated `Draft.from` must never reach a provider payload.
-    let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
+    let _provider_guard = state
+        .acquire_provider_operation(&requested.account_id)
+        .await;
     // A provider draft is always anchored by the same local DraftId. This also
     // covers clients that choose "save to server" on their first save instead
     // of issuing SaveDraft followed by SaveDraftToServer.
-    state.store.insert_draft_if_absent(draft).await?;
-    let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
+    state.store.insert_draft_if_absent(&requested).await?;
+    let stored = state
+        .store
+        .get_draft(&requested.id)
+        .await?
+        .ok_or_else(|| format!("Draft not found: {}", requested.id))?;
+    if stored.account_id != requested.account_id {
+        return Err(format!(
+            "Draft {} belongs to account {}, not {}",
+            stored.id, stored.account_id, requested.account_id
+        )
+        .into());
+    }
+    if state.store.get_draft_status(&stored.id).await? != Some(DraftStatus::Draft) {
+        return Err(format!("Draft {} is not editable", stored.id).into());
+    }
+    validate_draft_content(&stored)?;
+    let materialized = materialize_text_alternative(&stored);
+    let draft = &*materialized;
+    // Validate the per-message From (owned-address) exactly like the send
+    // path — an unvalidated `Draft.from` must never reach a provider payload.
+    let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
     let threaded = resolved_reply_thread(sender.as_ref(), draft).await;
     let draft = threaded.as_ref().unwrap_or(draft);
     if let Some(provider_draft_id) = state.store.get_provider_draft_id(&draft.id).await? {
@@ -3298,7 +3745,23 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
         }
     }
 
-    match sender.save_draft(draft, &from).await {
+    let message_id = ensure_draft_message_id(state, &draft.id, &from).await?;
+    let existing_provider_draft_id = sender.find_draft_by_message_id(&message_id).await?;
+    let (save_result, created_remotely) = match existing_provider_draft_id {
+        Some(provider_draft_id) => {
+            sender
+                .update_draft(&provider_draft_id, draft, &from)
+                .await?;
+            (Ok(Some(provider_draft_id)), false)
+        }
+        None => (
+            sender
+                .save_draft_with_message_id(draft, &from, &message_id)
+                .await,
+            true,
+        ),
+    };
+    match save_result {
         Ok(Some(draft_id)) => {
             if threaded.is_some() {
                 persist_reply_thread_id(state, draft).await;
@@ -3311,10 +3774,33 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
                     None
                 }
             };
+            let claim_result = state
+                .store
+                .claim_provider_draft_link(&draft.id, &draft_id, revision.as_deref())
+                .await;
+            let claimed = match claim_result {
+                Ok(Some(claimed)) => claimed,
+                Ok(None) => {
+                    if created_remotely {
+                        cleanup_orphaned_provider_draft(sender.as_ref(), &draft_id).await;
+                    }
+                    return Err(format!("Draft not found: {}", draft.id).into());
+                }
+                Err(error) => {
+                    if created_remotely {
+                        cleanup_orphaned_provider_draft(sender.as_ref(), &draft_id).await;
+                    }
+                    return Err(error.into());
+                }
+            };
+            for duplicate_id in claimed {
+                remove_provider_draft_cache(state, &duplicate_id).await;
+            }
             let linked = state
                 .store
-                .set_provider_draft_link(&draft.id, &draft_id, revision.as_deref())
-                .await?;
+                .get_provider_draft_id(&draft.id)
+                .await?
+                .is_some();
             tracing::info!(draft_id, linked, "Draft saved to server");
             Ok(ResponseData::Ack)
         }
@@ -3327,6 +3813,12 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
             }
         }
         Err(error) => Err(format!("Failed to save draft: {error}").into()),
+    }
+}
+
+async fn cleanup_orphaned_provider_draft(sender: &dyn MailSendProvider, draft_id: &str) {
+    if let Err(error) = sender.delete_draft(draft_id).await {
+        tracing::error!(draft_id, %error, "could not remove provider draft after local link failure");
     }
 }
 

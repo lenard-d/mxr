@@ -813,12 +813,14 @@ the same.
 
 **Affects**: 02-data-model.md, 06-compose.md, CLI, TUI, web, MCP, agent skill
 
-**The rule**: Provider draft sync is opt-in and local-first. The first push
-stores the provider draft id and opaque revision beside the local draft.
-Subsequent edits update that provider resource in place. Normal account sync
-pulls changed provider MIME into the same local `DraftId`; provider deletion
-removes the linked local row. Local deletion removes the provider resource
-first. Provider failures preserve local data. Every client uses daemon IPC
+**The rule**: Provider draft sync is local-first. Normal account sync discovers
+provider drafts and imports each unknown resource once, storing its provider
+draft id and opaque revision beside the local draft. A local-only draft remains
+opt-in until its first push. Subsequent edits update that provider resource in
+place. Normal account sync pulls changed provider MIME into the same local
+`DraftId`; an explicit provider not-found removes the linked local row. Local
+deletion removes the provider resource first. Provider failures preserve local
+data. Every client uses daemon IPC
 instead of implementing its own lifecycle.
 
 Gmail needs no content diff: its draft id identifies the stable resource and

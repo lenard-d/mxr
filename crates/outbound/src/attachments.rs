@@ -138,7 +138,7 @@ pub fn validate_cid(cid: &str) -> Result<(), InlineAssetError> {
     }
     if !cid
         .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'))
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+' | '@'))
     {
         return Err(InlineAssetError::InvalidCid {
             cid: cid.to_string(),
@@ -190,7 +190,11 @@ fn resolve_one_path(path: &Path) -> Result<ResolvedAttachment, AttachmentError> 
         |name| name.to_string_lossy().to_string(),
     );
 
-    let mime_type = match path.extension().and_then(|extension| extension.to_str()) {
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase);
+    let mime_type = match extension.as_deref() {
         Some("pdf") => "application/pdf",
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
@@ -198,6 +202,7 @@ fn resolve_one_path(path: &Path) -> Result<ResolvedAttachment, AttachmentError> 
         Some("txt") => "text/plain",
         Some("csv") => "text/csv",
         Some("html" | "htm") => "text/html",
+        Some("eml") => "message/rfc822",
         Some("zip") => "application/zip",
         Some("doc") => "application/msword",
         Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -283,7 +288,7 @@ mod tests {
 
     #[test]
     fn the_documented_cid_charset_is_accepted() {
-        // Letters, digits, and `. _ - +`.
+        // Letters, digits, and `. _ - + @` (the latter is common in RFC-style CIDs).
         for cid in [
             "logo",
             "notto-logo",
@@ -293,6 +298,7 @@ mod tests {
             "LOGO",
             "0",
             "a.b_c-d+e9",
+            "image001.png@example.com",
         ] {
             assert_eq!(validate_cid(cid), Ok(()), "should have accepted: {cid}");
         }
@@ -303,7 +309,6 @@ mod tests {
         for cid in [
             "logo bar",
             "<logo>",
-            "logo@example.com",
             "logo:1",
             "logo;name=x",
             "logo\"x",
@@ -321,5 +326,20 @@ mod tests {
         let error = validate_cid("logo bar").unwrap_err();
         let rendered = error.to_string();
         assert!(rendered.contains("logo bar"), "{rendered}");
+    }
+
+    #[test]
+    fn eml_attachments_keep_the_message_rfc822_media_type() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("mxr-{unique}.eml"));
+        std::fs::write(&path, b"From: sender@example.com\r\n\r\nBody").unwrap();
+
+        let resolved = resolve_one_path(&path).unwrap();
+
+        let _ = std::fs::remove_file(path);
+        assert_eq!(resolved.mime_type, "message/rfc822");
     }
 }

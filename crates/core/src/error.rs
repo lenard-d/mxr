@@ -20,6 +20,11 @@ pub enum MxrError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    /// The provider may have accepted a send, but the client did not receive a
+    /// definitive response. Callers must not retry automatically.
+    #[error("Send outcome unknown: {0}")]
+    SendOutcomeUnknown(String),
+
     /// Adapter's sync cursor is no longer usable (Gmail historyId past
     /// the server's retention window, IMAP UIDVALIDITY changed, JMAP
     /// `cannotCalculateChanges`). The daemon catches this, clears the

@@ -83,6 +83,11 @@ pub trait GmailApi: Send + Sync {
         raw_base64url: &str,
         thread_id: Option<&str>,
     ) -> Result<serde_json::Value, GmailError>;
+    async fn send_draft(&self, _draft_id: &str) -> Result<serde_json::Value, GmailError> {
+        Err(GmailError::Parse(
+            "draft sending is not implemented by this Gmail API client".to_string(),
+        ))
+    }
     async fn get_attachment(
         &self,
         message_id: &str,
@@ -100,6 +105,15 @@ pub trait GmailApi: Send + Sync {
         thread_id: Option<&str>,
     ) -> Result<(), GmailError>;
     async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError>;
+    async fn list_drafts(
+        &self,
+        _page_token: Option<&str>,
+        _max_results: u32,
+    ) -> Result<GmailDraftListResponse, GmailError> {
+        Err(GmailError::Parse(
+            "draft listing is not implemented by this Gmail API client".to_string(),
+        ))
+    }
     async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError>;
     async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError>;
     async fn create_label(&self, name: &str, color: Option<&str>)
@@ -172,7 +186,10 @@ impl GmailClient {
         page_token: Option<&str>,
         max_results: u32,
     ) -> Result<GmailListResponse, GmailError> {
-        let mut url = format!("{}/messages?maxResults={max_results}", self.base_url);
+        let mut url = format!(
+            "{}/messages?maxResults={max_results}&includeSpamTrash=true",
+            self.base_url
+        );
         if let Some(q) = query {
             url.push_str(&format!("&q={}", urlencoding::encode(q)));
         }
@@ -385,6 +402,22 @@ impl GmailClient {
         Ok(resp.json().await?)
     }
 
+    /// Send and consume an existing Gmail draft atomically.
+    pub async fn send_draft(&self, draft_id: &str) -> Result<serde_json::Value, GmailError> {
+        let url = format!("{}/drafts/send", self.base_url);
+        let response = self
+            .http
+            .post(&url)
+            .header("Authorization", self.auth_header().await?)
+            .json(&serde_json::json!({ "id": draft_id }))
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            return Err(self.handle_error(response).await);
+        }
+        Ok(response.json().await?)
+    }
+
     pub async fn get_attachment(
         &self,
         message_id: &str,
@@ -500,8 +533,33 @@ impl GmailClient {
             .map_err(|error| GmailError::Parse(format!("invalid draft MIME encoding: {error}")))?;
         Ok(Some(ServerDraftSnapshot {
             revision: revision.to_string(),
+            thread_id: json["message"]["threadId"].as_str().map(str::to_string),
             raw_rfc822,
         }))
+    }
+
+    pub async fn list_drafts(
+        &self,
+        page_token: Option<&str>,
+        max_results: u32,
+    ) -> Result<GmailDraftListResponse, GmailError> {
+        let mut url = format!(
+            "{}/drafts?maxResults={max_results}&includeSpamTrash=true",
+            self.base_url
+        );
+        if let Some(page_token) = page_token {
+            url.push_str(&format!("&pageToken={}", urlencoding::encode(page_token)));
+        }
+        let response = self
+            .http
+            .get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            return Err(self.handle_error(response).await);
+        }
+        Ok(response.json().await?)
     }
 
     pub async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
@@ -693,6 +751,10 @@ impl GmailApi for GmailClient {
         Self::send_message(self, raw_base64url, thread_id).await
     }
 
+    async fn send_draft(&self, draft_id: &str) -> Result<serde_json::Value, GmailError> {
+        Self::send_draft(self, draft_id).await
+    }
+
     async fn get_attachment(
         &self,
         message_id: &str,
@@ -720,6 +782,14 @@ impl GmailApi for GmailClient {
 
     async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError> {
         Self::fetch_draft(self, draft_id).await
+    }
+
+    async fn list_drafts(
+        &self,
+        page_token: Option<&str>,
+        max_results: u32,
+    ) -> Result<GmailDraftListResponse, GmailError> {
+        Self::list_drafts(self, page_token, max_results).await
     }
 
     async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
@@ -771,7 +841,9 @@ mod tests {
     use futures::FutureExt;
     use std::any::Any;
     use std::panic::AssertUnwindSafe;
-    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
+    use wiremock::matchers::{
+        body_json, header, method, path, query_param, query_param_is_missing,
+    };
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     // For tests, we need a GmailClient that doesn't need real OAuth.
@@ -832,7 +904,10 @@ mod tests {
             page_token: Option<&str>,
             max_results: u32,
         ) -> Result<GmailListResponse, GmailError> {
-            let mut url = format!("{}/messages?maxResults={max_results}", self.base_url);
+            let mut url = format!(
+                "{}/messages?maxResults={max_results}&includeSpamTrash=true",
+                self.base_url
+            );
             if let Some(q) = query {
                 url.push_str(&format!("&q={}", urlencoding::encode(q)));
             }
@@ -840,18 +915,42 @@ mod tests {
                 url.push_str(&format!("&pageToken={pt}"));
             }
 
-            let resp = self
+            let response = self
                 .http
                 .get(&url)
                 .header("Authorization", self.auth_header())
                 .send()
                 .await?;
 
-            if !resp.status().is_success() {
-                return Err(self.handle_error(resp).await);
+            if !response.status().is_success() {
+                return Err(self.handle_error(response).await);
             }
 
-            Ok(resp.json().await?)
+            Ok(response.json().await?)
+        }
+
+        async fn list_drafts(
+            &self,
+            page_token: Option<&str>,
+            max_results: u32,
+        ) -> Result<GmailDraftListResponse, GmailError> {
+            let mut url = format!(
+                "{}/drafts?maxResults={max_results}&includeSpamTrash=true",
+                self.base_url
+            );
+            if let Some(page_token) = page_token {
+                url.push_str(&format!("&pageToken={}", urlencoding::encode(page_token)));
+            }
+            let response = self
+                .http
+                .get(&url)
+                .header("Authorization", self.auth_header())
+                .send()
+                .await?;
+            if !response.status().is_success() {
+                return Err(self.handle_error(response).await);
+            }
+            Ok(response.json().await?)
         }
     }
 
@@ -1039,6 +1138,7 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/messages"))
+            .and(query_param("includeSpamTrash", "true"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "messages": [
                     {"id": "msg1", "threadId": "t1"},
@@ -1058,6 +1158,63 @@ mod tests {
         assert_eq!(msgs[0].id, "msg1");
         assert_eq!(msgs[1].id, "msg2");
         assert!(resp.next_page_token.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_drafts_returns_stable_draft_ids_and_next_page() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+
+        Mock::given(method("GET"))
+            .and(path("/drafts"))
+            .and(query_param("maxResults", "100"))
+            .and(query_param("includeSpamTrash", "true"))
+            .and(query_param("pageToken", "next token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "drafts": [
+                    {"id": "draft-1", "message": {"id": "message-1"}},
+                    {"id": "draft-2", "message": {"id": "message-2"}}
+                ],
+                "nextPageToken": "last-page",
+                "resultSizeEstimate": 3
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = TestGmailClient::new(server.uri());
+        let response = client.list_drafts(Some("next token"), 100).await.unwrap();
+
+        let drafts = response.drafts.unwrap();
+        assert_eq!(drafts.len(), 2);
+        assert_eq!(drafts[0].id, "draft-1");
+        assert_eq!(drafts[1].id, "draft-2");
+        assert_eq!(response.next_page_token.as_deref(), Some("last-page"));
+        assert_eq!(response.result_size_estimate, Some(3));
+    }
+
+    #[tokio::test]
+    async fn send_draft_posts_the_stable_draft_id() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+        Mock::given(method("POST"))
+            .and(path("/drafts/send"))
+            .and(body_json(serde_json::json!({ "id": "draft-1" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sent-message-1",
+                "threadId": "thread-1"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client =
+            GmailClient::new(GmailAuth::for_test_token("test-token")).with_base_url(server.uri());
+
+        let response = client.send_draft("draft-1").await.unwrap();
+
+        assert_eq!(response["id"], "sent-message-1");
     }
 
     #[tokio::test]

@@ -536,6 +536,31 @@ impl MailSendProvider for FakeProvider {
         })
     }
 
+    async fn send_server_draft(
+        &self,
+        provider_draft_id: &str,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, MxrError> {
+        self.fail_if_requested()?;
+        let removed = self
+            .server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned")
+            .remove(provider_draft_id);
+        if removed.is_none() {
+            return Err(MxrError::NotFound(format!(
+                "provider draft {provider_draft_id}"
+            )));
+        }
+        self.server_draft_revisions
+            .lock()
+            .expect("fake provider server_draft_revisions mutex should not be poisoned")
+            .remove(provider_draft_id);
+        self.send(draft, from, rfc2822_message_id).await
+    }
+
     /// Mirror Gmail: a reply draft is filed on its parent's thread, so the
     /// daemon's cache-back of the provider thread id is exercised in tests.
     async fn resolve_reply_thread_id(&self, draft: &Draft) -> Result<Option<String>, MxrError> {
@@ -606,8 +631,24 @@ impl MailSendProvider for FakeProvider {
             .unwrap_or(1);
         Ok(Some(mxr_core::ServerDraftSnapshot {
             revision: revision.to_string(),
+            thread_id: draft
+                .reply_headers
+                .as_ref()
+                .and_then(|headers| headers.thread_id.clone()),
             raw_rfc822: build_fake_draft_message(&draft)?,
         }))
+    }
+
+    async fn list_draft_ids(&self) -> Result<Vec<String>, MxrError> {
+        let mut ids = self
+            .server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        Ok(ids)
     }
 
     async fn delete_draft(&self, provider_draft_id: &str) -> Result<(), MxrError> {

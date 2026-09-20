@@ -872,6 +872,16 @@ const MIGRATIONS: &[Migration] = &[
             },
         ]),
     },
+    Migration {
+        version: 51,
+        name: "draft_send_outcome_unknown",
+        kind: MigrationKind::AddColumn {
+            table: "drafts",
+            column: "send_outcome_unknown",
+            sql: "ALTER TABLE drafts ADD COLUMN send_outcome_unknown INTEGER NOT NULL DEFAULT 0 \
+                  CHECK (send_outcome_unknown IN (0, 1))",
+        },
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

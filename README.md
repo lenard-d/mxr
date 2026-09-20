@@ -116,9 +116,11 @@ mxr read-archive --search "from:noreply@example.com older_than:7d" --dry-run
 mxr read-archive --search "from:noreply@example.com older_than:7d" --yes
 ```
 
-Gmail drafts can stay available on every device without splitting into two
-copies. Push once to link the local and Gmail drafts; later edits update the
-same Gmail draft, and normal sync pulls Gmail edits or deletions back locally:
+Gmail drafts stay available on every device without splitting into two copies.
+For accounts that use Gmail as their outbound provider, normal sync discovers
+drafts created in Gmail and imports them into mxr. For a
+local-only draft, push once to create and link the Gmail copy; later edits
+update that same draft, and normal sync pulls Gmail edits or deletions locally:
 
 ```bash
 mxr drafts push DRAFT_ID --dry-run

@@ -198,12 +198,14 @@ Drafts persist in SQLite. If the user starts composing and quits $EDITOR without
 - `mxr drafts` — list all drafts
 - Command palette: "Resume draft" → select from list → opens $EDITOR with the draft file
 
-Drafts remain local-first. Provider linking is explicit: `mxr drafts push
-DRAFT_ID` creates one provider draft and stores its provider id and revision.
-Later local edits update that resource in place. Normal sync compares provider
-revisions, pulls remote edits into the same local `DraftId`, and removes the
-local row after an explicit provider-side deletion. Deleting locally removes a
-linked provider draft first; provider failures preserve the local row.
+Drafts remain local-first. Normal sync discovers provider drafts and imports
+unknown resources with their provider id and revision. Linking a local-only
+draft is explicit: `mxr drafts push DRAFT_ID` creates one provider draft and
+stores the same link metadata. Later local edits update that resource in place.
+Normal sync compares provider revisions, pulls remote edits into the same local
+`DraftId`, and removes the local row only after an explicit provider-side
+not-found. Deleting locally removes a linked provider draft first; provider
+failures preserve the local row.
 
 Gmail supports this through its stable draft resource id and changing nested
 message id. Providers without server-draft support keep drafts local-only.
