@@ -2645,7 +2645,11 @@ fn is_remote_attachment_part(
 ) -> bool {
     if part.is_multipart() {
         return matches!(disposition, AttachmentDisposition::Attachment)
-            || part.attachment_name().is_some();
+            || part.attachment_name().is_some()
+            || part
+                .content_id()
+                .and_then(normalize_remote_content_id)
+                .is_some();
     }
     if part.is_message() {
         return true;
@@ -2817,6 +2821,28 @@ mod remote_draft_mime_tests {
             content,
             DraftContent::Html { html, text: None } if html.contains("Actual HTML body")
         ));
+    }
+
+    #[test]
+    fn cid_multipart_is_one_attachment_and_not_the_message_body() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n--outer\r\nContent-Type: multipart/related; boundary=related\r\nContent-ID: <bundle@example.com>\r\n\r\n--related\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Nested bundle HTML</p>\r\n--related--\r\n--outer\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nActual plain body\r\n--outer--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let (text, html) = exact_provider_draft_bodies(&parsed);
+
+        assert!(text.is_some_and(|text| text.contains("Actual plain body")));
+        assert!(html.is_none());
+
+        let descendants = attached_multipart_descendants(&parsed);
+        let emitted_attachments = parsed
+            .parts
+            .iter()
+            .enumerate()
+            .filter(|(index, part)| {
+                !descendants.contains(index)
+                    && is_remote_attachment_part(part, remote_attachment_disposition(*part))
+            })
+            .count();
+        assert_eq!(emitted_attachments, 1);
     }
 
     #[test]
