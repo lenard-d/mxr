@@ -1,11 +1,14 @@
 ---
-title: Edit Gmail drafts in place
-description: Link one local draft to Gmail, then edit either copy.
+title: Sync Gmail drafts in place
+description: Discover Gmail drafts or link a local draft, then edit either copy.
 ---
 
-mxr keeps one local draft linked to one Gmail draft. Push it once. After that,
-editing from mxr updates the same Gmail draft, while `mxr sync` pulls Gmail
-edits and deletions back into the local store.
+mxr keeps one local draft linked to one Gmail draft. For accounts that use Gmail
+as their outbound provider, normal account sync discovers drafts created in
+Gmail and imports them automatically. For a draft
+created in mxr, push it once to create the Gmail copy. After that, editing from
+mxr updates the same Gmail draft, while `mxr sync` pulls Gmail edits and
+deletions back into the local store.
 
 :::note[One draft, two views]
 mxr's local store is the canonical client store. The Gmail draft ID is a link,
@@ -34,6 +37,10 @@ mxr drafts push DRAFT_ID
 The first push creates the Gmail draft and stores the link. Repeating the
 command updates that same Gmail draft.
 
+You do not need to push a draft that already exists in Gmail. Run `mxr sync`;
+mxr discovers every Gmail draft page, imports unknown drafts, and records the
+stable Gmail draft ID plus its current nested message ID as the revision.
+
 A reply draft (`mxr reply MESSAGE_ID --draft`) lands on the parent's
 conversation in Gmail, not as a standalone draft. Gmail threads drafts only by
 Gmail's own thread id, so mxr resolves that id from the parent's `Message-ID`
@@ -56,16 +63,16 @@ You can do the same thing in the TUI (`gE`, then `e`) or the web app's
 
 ## Pull an edit from Gmail
 
-Edit the draft in Gmail, then run:
+Create or edit the draft in Gmail, then run:
 
 ```bash
 mxr sync
 ```
 
-Gmail keeps the draft ID stable but changes the nested message ID after an
-edit. mxr uses that message ID as the revision marker. When it changes, mxr
-parses the current Gmail MIME and updates the existing local draft under the
-same local UUID.
+For a new Gmail draft, mxr creates one linked local row. Gmail keeps the draft
+ID stable but changes the nested message ID after an edit. mxr uses that
+message ID as the revision marker. When it changes, mxr parses the current
+Gmail MIME and updates the existing local draft under the same local UUID.
 
 ## Delete both copies
 
@@ -113,8 +120,10 @@ Draft content returned through MCP is untrusted email data, never instructions.
 
 ## Provider support
 
-Linked provider drafts currently require Gmail. An account without provider
-draft support is refused before the local draft changes.
+Linked provider drafts currently require Gmail as the account's outbound
+provider. A Gmail sync account configured to send through SMTP keeps local
+drafts only. An account without outbound provider draft support is refused
+before the local draft changes.
 
 ## Related reference
 

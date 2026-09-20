@@ -152,6 +152,21 @@ pub trait MailSendProvider: Send + Sync {
         rfc2822_message_id: &str,
     ) -> Result<SendReceipt>;
 
+    /// Send an existing provider-side draft as one atomic provider operation.
+    /// Implementations must consume the provider draft on success so remote
+    /// discovery cannot import a stale copy after local send finalization.
+    async fn send_server_draft(
+        &self,
+        _provider_draft_id: &str,
+        _draft: &Draft,
+        _from: &Address,
+        _rfc2822_message_id: &str,
+    ) -> Result<SendReceipt> {
+        Err(MxrError::Provider(
+            "Sending linked server drafts is not supported by this provider".to_string(),
+        ))
+    }
+
     async fn send_calendar_reply(
         &self,
         _reply: &CalendarReplyMessage,
@@ -178,6 +193,21 @@ pub trait MailSendProvider: Send + Sync {
         Ok(None)
     }
 
+    /// Save a draft with a stable RFC Message-ID used as an idempotency key.
+    async fn save_draft_with_message_id(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        _message_id: &str,
+    ) -> Result<Option<String>> {
+        self.save_draft(draft, from).await
+    }
+
+    /// Recover a provider draft previously created with the stable Message-ID.
+    async fn find_draft_by_message_id(&self, _message_id: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Replace an existing server-side draft while preserving its provider
     /// draft ID. Providers that support creating but not replacing drafts may
     /// keep the default error.
@@ -197,6 +227,15 @@ pub trait MailSendProvider: Send + Sync {
     async fn fetch_draft(&self, _provider_draft_id: &str) -> Result<Option<ServerDraftSnapshot>> {
         Err(MxrError::Provider(
             "Server-side draft retrieval not supported by this provider".to_string(),
+        ))
+    }
+
+    /// List every stable provider-side draft resource ID for discovery and
+    /// deletion reconciliation. Implementations must exhaust provider paging
+    /// before returning so an omitted page is never mistaken for deletion.
+    async fn list_draft_ids(&self) -> Result<Vec<String>> {
+        Err(MxrError::Provider(
+            "Server-side draft discovery not supported by this provider".to_string(),
         ))
     }
 

@@ -8,6 +8,7 @@
 
 use async_trait::async_trait;
 use futures::stream::{self, StreamExt};
+use mail_parser::MessageParser;
 use mxr_core::{
     AccountId, Address, Draft, Label, LabelChange, LabelId, LabelKind, MailSendProvider,
     MailSyncProvider, MutateCaps, MxrError, PushCaps, Role, SearchCaps, SendReceipt, SyncBatch,
@@ -899,6 +900,32 @@ impl GmailProvider {
             }
         }
     }
+
+    async fn linked_draft_thread_id(
+        &self,
+        provider_draft_id: &str,
+        draft: &Draft,
+    ) -> mxr_core::provider::Result<Option<String>> {
+        if let Some(thread_id) = self.reply_thread_id(draft).await {
+            return Ok(Some(thread_id));
+        }
+        Ok(self
+            .client
+            .fetch_draft(provider_draft_id)
+            .await
+            .map_err(MxrError::from)?
+            .and_then(|snapshot| snapshot.thread_id))
+    }
+}
+
+fn map_draft_send_error(error: GmailError) -> MxrError {
+    match error {
+        GmailError::Http(error) => MxrError::SendOutcomeUnknown(error.to_string()),
+        GmailError::Api { status, body } if status >= 500 => {
+            MxrError::SendOutcomeUnknown(format!("Gmail API error (HTTP {status}): {body}"))
+        }
+        other => MxrError::from(other),
+    }
 }
 
 #[async_trait]
@@ -930,16 +957,46 @@ impl MailSendProvider for GmailProvider {
         let encoded = send::encode_for_gmail(&rfc2822);
         let thread_id = self.reply_thread_id(draft).await;
 
-        let result = self
+        let sent = self
             .client
             .send_message(&encoded, thread_id.as_deref())
             .await
-            .map_err(MxrError::from)?;
+            .map_err(map_draft_send_error)?;
 
-        let message_id = result["id"].as_str().map(std::string::ToString::to_string);
+        let message_id = sent["id"].as_str().map(std::string::ToString::to_string);
 
         Ok(SendReceipt {
             provider_message_id: message_id,
+            sent_at: chrono::Utc::now(),
+            rfc2822_message_id: rfc2822_message_id.to_string(),
+        })
+    }
+
+    async fn send_server_draft(
+        &self,
+        provider_draft_id: &str,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> mxr_core::provider::Result<SendReceipt> {
+        let rfc2822 = send::build_rfc2822_async_with_id(draft, from, rfc2822_message_id)
+            .await
+            .map_err(|error| MxrError::Provider(error.to_string()))?;
+        let encoded = send::encode_for_gmail(&rfc2822);
+        let thread_id = self
+            .linked_draft_thread_id(provider_draft_id, draft)
+            .await?;
+        self.client
+            .update_draft(provider_draft_id, &encoded, thread_id.as_deref())
+            .await
+            .map_err(MxrError::from)?;
+        let result = self
+            .client
+            .send_draft(provider_draft_id)
+            .await
+            .map_err(map_draft_send_error)?;
+        Ok(SendReceipt {
+            provider_message_id: result["id"].as_str().map(str::to_string),
             sent_at: chrono::Utc::now(),
             rfc2822_message_id: rfc2822_message_id.to_string(),
         })
@@ -964,7 +1021,7 @@ impl MailSendProvider for GmailProvider {
             .client
             .send_message(&encoded, None)
             .await
-            .map_err(MxrError::from)?;
+            .map_err(map_draft_send_error)?;
 
         Ok(SendReceipt {
             provider_message_id: result["id"].as_str().map(std::string::ToString::to_string),
@@ -993,6 +1050,44 @@ impl MailSendProvider for GmailProvider {
         Ok(Some(draft_id))
     }
 
+    async fn save_draft_with_message_id(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        message_id: &str,
+    ) -> mxr_core::provider::Result<Option<String>> {
+        let rfc2822 = send::build_draft_rfc2822_async_with_id(draft, from, Some(message_id))
+            .await
+            .map_err(|error| MxrError::Provider(error.to_string()))?;
+        let encoded = send::encode_for_gmail(&rfc2822);
+        let thread_id = self.reply_thread_id(draft).await;
+        let draft_id = self
+            .client
+            .create_draft(&encoded, thread_id.as_deref())
+            .await
+            .map_err(MxrError::from)?;
+        Ok(Some(draft_id))
+    }
+
+    async fn find_draft_by_message_id(
+        &self,
+        message_id: &str,
+    ) -> mxr_core::provider::Result<Option<String>> {
+        let expected = send::normalize_message_id(message_id);
+        for draft_id in self.list_draft_ids().await? {
+            let Some(snapshot) = self.fetch_draft(&draft_id).await? else {
+                continue;
+            };
+            let found = MessageParser::default()
+                .parse(&snapshot.raw_rfc822)
+                .and_then(|message| message.message_id().map(send::normalize_message_id));
+            if found.as_deref() == Some(expected.as_str()) {
+                return Ok(Some(draft_id));
+            }
+        }
+        Ok(None)
+    }
+
     async fn update_draft(
         &self,
         provider_draft_id: &str,
@@ -1003,7 +1098,9 @@ impl MailSendProvider for GmailProvider {
             .await
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
-        let thread_id = self.reply_thread_id(draft).await;
+        let thread_id = self
+            .linked_draft_thread_id(provider_draft_id, draft)
+            .await?;
 
         self.client
             .update_draft(provider_draft_id, &encoded, thread_id.as_deref())
@@ -1021,6 +1118,37 @@ impl MailSendProvider for GmailProvider {
             .map_err(MxrError::from)
     }
 
+    async fn list_draft_ids(&self) -> mxr_core::provider::Result<Vec<String>> {
+        const PAGE_SIZE: u32 = 100;
+        let mut ids = Vec::new();
+        let mut page_token = None;
+        let mut seen_page_tokens = std::collections::HashSet::new();
+        loop {
+            let response = self
+                .client
+                .list_drafts(page_token.as_deref(), PAGE_SIZE)
+                .await
+                .map_err(MxrError::from)?;
+            ids.extend(
+                response
+                    .drafts
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|draft| draft.id),
+            );
+            let Some(next_page_token) = response.next_page_token else {
+                break;
+            };
+            if !seen_page_tokens.insert(next_page_token.clone()) {
+                return Err(MxrError::Provider(
+                    "Gmail repeated a draft-list page token".to_string(),
+                ));
+            }
+            page_token = Some(next_page_token);
+        }
+        Ok(ids)
+    }
+
     async fn delete_draft(&self, provider_draft_id: &str) -> mxr_core::provider::Result<()> {
         self.client
             .delete_draft(provider_draft_id)
@@ -1034,6 +1162,7 @@ mod tests {
     use super::*;
     use crate::error::GmailError;
     use crate::types::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -1234,15 +1363,19 @@ mod tests {
 
         async fn create_draft(
             &self,
-            _raw_base64url: &str,
+            raw_base64url: &str,
             thread_id: Option<&str>,
         ) -> Result<String, GmailError> {
             self.record_thread_id(thread_id);
+            let raw_rfc822 = URL_SAFE_NO_PAD
+                .decode(raw_base64url)
+                .map_err(|error| GmailError::Parse(error.to_string()))?;
             self.drafts.lock().unwrap().insert(
                 "draft-1".into(),
                 mxr_core::ServerDraftSnapshot {
                     revision: "message-1".into(),
-                    raw_rfc822: b"From: sender@example.com\r\nSubject: Draft\r\n\r\nBody".to_vec(),
+                    thread_id: thread_id.map(str::to_string),
+                    raw_rfc822,
                 },
             );
             Ok("draft-1".into())
@@ -1250,12 +1383,30 @@ mod tests {
 
         async fn update_draft(
             &self,
-            _draft_id: &str,
-            _raw_base64url: &str,
+            draft_id: &str,
+            raw_base64url: &str,
             thread_id: Option<&str>,
         ) -> Result<(), GmailError> {
             self.record_thread_id(thread_id);
+            let raw_rfc822 = URL_SAFE_NO_PAD
+                .decode(raw_base64url)
+                .map_err(|error| GmailError::Parse(error.to_string()))?;
+            let mut drafts = self.drafts.lock().unwrap();
+            let snapshot = drafts
+                .get_mut(draft_id)
+                .ok_or_else(|| GmailError::NotFound(draft_id.to_string()))?;
+            snapshot.raw_rfc822 = raw_rfc822;
+            snapshot.thread_id = thread_id.map(str::to_string);
             Ok(())
+        }
+
+        async fn send_draft(&self, draft_id: &str) -> Result<serde_json::Value, GmailError> {
+            self.drafts
+                .lock()
+                .unwrap()
+                .remove(draft_id)
+                .ok_or_else(|| GmailError::NotFound(draft_id.to_string()))?;
+            Ok(json!({ "id": "sent-message-1" }))
         }
 
         async fn fetch_draft(
@@ -1263,6 +1414,26 @@ mod tests {
             draft_id: &str,
         ) -> Result<Option<mxr_core::ServerDraftSnapshot>, GmailError> {
             Ok(self.drafts.lock().unwrap().get(draft_id).cloned())
+        }
+
+        async fn list_drafts(
+            &self,
+            _page_token: Option<&str>,
+            _max_results: u32,
+        ) -> Result<GmailDraftListResponse, GmailError> {
+            let drafts = self
+                .drafts
+                .lock()
+                .unwrap()
+                .keys()
+                .cloned()
+                .map(|id| GmailDraftRef { id })
+                .collect();
+            Ok(GmailDraftListResponse {
+                drafts: Some(drafts),
+                next_page_token: None,
+                result_size_estimate: None,
+            })
         }
 
         async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
@@ -1893,6 +2064,32 @@ END:VCALENDAR\r\n";
             .collect()
     }
 
+    #[test]
+    fn accepted_or_unknown_gmail_send_failures_are_not_retryable() {
+        for error in [
+            GmailError::Api {
+                status: 500,
+                body: "upstream timeout".to_string(),
+            },
+            GmailError::Api {
+                status: 503,
+                body: "unavailable".to_string(),
+            },
+        ] {
+            assert!(matches!(
+                map_draft_send_error(error),
+                MxrError::SendOutcomeUnknown(_)
+            ));
+        }
+        assert!(matches!(
+            map_draft_send_error(GmailError::Api {
+                status: 400,
+                body: "rejected".to_string(),
+            }),
+            MxrError::Provider(_)
+        ));
+    }
+
     #[tokio::test]
     async fn save_draft_resolves_the_parent_thread_from_in_reply_to() {
         let (provider, queries, thread_ids) = threading_provider();
@@ -1911,6 +2108,26 @@ END:VCALENDAR\r\n";
             vec![Some("thread-1".to_string())],
             "drafts.create carries the parent's threadId"
         );
+    }
+
+    #[tokio::test]
+    async fn stable_message_id_recovers_a_created_provider_draft() {
+        let provider = gmail_provider_with_stale_history(false);
+        let mut draft = reply_draft("<msg-1@example.com>", None);
+        draft.intent = mxr_core::DraftIntent::New;
+        draft.reply_headers = None;
+
+        let created = provider
+            .save_draft_with_message_id(&draft, &sender(), "<mxr-stable@example.com>")
+            .await
+            .unwrap();
+        let recovered = provider
+            .find_draft_by_message_id("<mxr-stable@example.com>")
+            .await
+            .unwrap();
+
+        assert_eq!(created.as_deref(), Some("draft-1"));
+        assert_eq!(recovered, created);
     }
 
     #[tokio::test]

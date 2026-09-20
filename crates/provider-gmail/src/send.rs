@@ -69,16 +69,24 @@ pub async fn build_rfc2822_async_with_id(
 pub fn build_draft_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
     let attachments = load_attachments_sync(&draft.attachments)?;
     let inline_assets = load_inline_sync(&draft.inline_assets)?;
-    build_draft_rfc2822_with_attachments(draft, from, &attachments, &inline_assets)
+    build_draft_rfc2822_with_attachments(draft, from, &attachments, &inline_assets, None)
 }
 
 pub async fn build_draft_rfc2822_async(
     draft: &Draft,
     from: &Address,
 ) -> Result<Vec<u8>, GmailSendError> {
+    build_draft_rfc2822_async_with_id(draft, from, None).await
+}
+
+pub async fn build_draft_rfc2822_async_with_id(
+    draft: &Draft,
+    from: &Address,
+    message_id: Option<&str>,
+) -> Result<Vec<u8>, GmailSendError> {
     let attachments = load_attachments_async(&draft.attachments).await?;
     let inline_assets = load_inline_async(&draft.inline_assets).await?;
-    build_draft_rfc2822_with_attachments(draft, from, &attachments, &inline_assets)
+    build_draft_rfc2822_with_attachments(draft, from, &attachments, &inline_assets, message_id)
 }
 
 fn build_draft_rfc2822_with_attachments(
@@ -86,6 +94,7 @@ fn build_draft_rfc2822_with_attachments(
     from: &Address,
     attachments: &[LoadedAttachment],
     inline_assets: &[LoadedInlineAsset],
+    message_id: Option<&str>,
 ) -> Result<Vec<u8>, GmailSendError> {
     let started_at = Instant::now();
     // Both body kinds land here. An HTML draft passes its document through
@@ -105,6 +114,9 @@ fn build_draft_rfc2822_with_attachments(
         .subject(draft.subject.clone())
         .text_body(plain)
         .html_body(html);
+    if let Some(message_id) = message_id {
+        builder = builder.message_id(normalize_message_id(message_id));
+    }
 
     for address in &draft.to {
         builder = address_with_name(builder, HeaderAddressKind::To, address);

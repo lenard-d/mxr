@@ -1114,6 +1114,149 @@ async fn provider_draft_id_survives_local_edits_and_can_be_relinked() {
         .unwrap());
 }
 
+#[tokio::test]
+async fn provider_draft_import_is_atomic_and_deduplicated_per_account() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let first = draft_with(
+        &account.id,
+        DraftContent::markdown("first import"),
+        1_700_000_000,
+    );
+    let duplicate = Draft {
+        id: DraftId::new(),
+        content: DraftContent::markdown("racing import"),
+        ..first.clone()
+    };
+
+    assert!(store
+        .insert_provider_draft(&first, "gmail-draft-1", "message-1")
+        .await
+        .unwrap());
+    assert!(!store
+        .insert_provider_draft(&duplicate, "gmail-draft-1", "message-1")
+        .await
+        .unwrap());
+
+    let drafts = store.list_drafts(&account.id).await.unwrap();
+    assert_eq!(drafts.len(), 1);
+    assert_eq!(drafts[0].id, first.id);
+    assert_eq!(
+        store.list_provider_draft_links(&account.id).await.unwrap(),
+        vec![(
+            first.id,
+            "gmail-draft-1".to_string(),
+            Some("message-1".to_string())
+        )]
+    );
+}
+
+#[tokio::test]
+async fn claiming_provider_link_removes_a_racing_import() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let canonical = draft_with(
+        &account.id,
+        DraftContent::markdown("local canonical"),
+        1_700_000_000,
+    );
+    let imported = Draft {
+        id: DraftId::new(),
+        content: DraftContent::markdown("racing import"),
+        ..canonical.clone()
+    };
+    store.insert_draft(&canonical).await.unwrap();
+    store
+        .set_draft_message_id_header(&canonical.id, "<stable@example.com>")
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .find_draft_by_message_id_header(&account.id, "stable@example.com")
+            .await
+            .unwrap(),
+        Some(canonical.id.clone())
+    );
+    assert!(store
+        .insert_provider_draft(&imported, "gmail-draft-1", "message-1")
+        .await
+        .unwrap());
+
+    let removed = store
+        .claim_provider_draft_link(&canonical.id, "gmail-draft-1", Some("message-1"))
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(removed, vec![imported.id]);
+    assert!(store.get_draft(&removed[0]).await.unwrap().is_none());
+    assert_eq!(
+        store.get_provider_draft_id(&canonical.id).await.unwrap(),
+        Some("gmail-draft-1".to_string())
+    );
+}
+
+#[tokio::test]
+async fn claiming_provider_link_cannot_replace_a_protected_send() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let sending = draft_with(
+        &account.id,
+        DraftContent::markdown("ambiguous send"),
+        1_700_000_000,
+    );
+    let replacement = Draft {
+        id: DraftId::new(),
+        content: DraftContent::markdown("replacement"),
+        ..sending.clone()
+    };
+    store.insert_draft(&sending).await.unwrap();
+    assert!(store
+        .set_provider_draft_link(&sending.id, "gmail-draft-1", Some("message-1"))
+        .await
+        .unwrap());
+    assert!(store
+        .cas_draft_status(&sending.id, DraftStatus::Draft, DraftStatus::Sending)
+        .await
+        .unwrap());
+    store.insert_draft(&replacement).await.unwrap();
+
+    let error = store
+        .claim_provider_draft_link(&replacement.id, "gmail-draft-1", Some("message-1"))
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("protected local draft"));
+    assert!(store.get_draft(&sending.id).await.unwrap().is_some());
+    assert_eq!(
+        store.get_provider_draft_id(&replacement.id).await.unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn provider_delete_cannot_remove_a_sending_draft() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let draft = draft_with(
+        &account.id,
+        DraftContent::markdown("in flight"),
+        1_700_000_000,
+    );
+    store.insert_draft(&draft).await.unwrap();
+    assert!(store
+        .cas_draft_status(&draft.id, DraftStatus::Draft, DraftStatus::Sending)
+        .await
+        .unwrap());
+
+    assert!(!store.delete_editable_draft(&draft.id).await.unwrap());
+    assert!(store.get_draft(&draft.id).await.unwrap().is_some());
+}
+
 fn draft_with(account_id: &AccountId, content: DraftContent, at: i64) -> Draft {
     Draft {
         id: DraftId::new(),

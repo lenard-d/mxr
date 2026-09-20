@@ -574,8 +574,10 @@ pub(crate) async fn finalize_sync_pass(
     if outcome.has_more && (detached || started_by != SyncStarter::AccountLoop) {
         state.idle_notify_for_account(&account_id).notify_one();
     }
-    if let Err(error) = crate::handler::reconcile_provider_drafts(&state, &account_id).await {
-        tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
+    if !outcome.has_more {
+        if let Err(error) = crate::handler::reconcile_provider_drafts(&state, &account_id).await {
+            tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
+        }
     }
     let _ = state
         .store

@@ -113,6 +113,64 @@ impl super::Store {
         Ok(())
     }
 
+    /// Insert a provider-discovered draft and its stable provider link in one
+    /// statement. Keeping these writes atomic prevents a crash from leaving a
+    /// provider draft as an indistinguishable local-only row that gets imported
+    /// again on the next sync.
+    pub async fn insert_provider_draft(
+        &self,
+        draft: &Draft,
+        provider_draft_id: &str,
+        provider_draft_revision: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let to_addrs = encode_json(&draft.to)?;
+        let cc_addrs = encode_json(&draft.cc)?;
+        let bcc_addrs = encode_json(&draft.bcc)?;
+        let attachments = encode_json(&draft.attachments)?;
+        let inline_assets = encode_json(&draft.inline_assets)?;
+        let content = encode_content(&draft.content);
+        let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
+        let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
+        let inline_calendar_reply_json = draft
+            .inline_calendar_reply
+            .as_ref()
+            .map(encode_json)
+            .transpose()?;
+
+        sqlx::query(
+            "INSERT INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, body_html, body_text, content_kind, attachments, inline_assets, inline_calendar_reply_json, created_at, updated_at, provider_draft_id, provider_draft_revision)
+             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM drafts WHERE account_id = ? AND provider_draft_id = ?
+             )",
+        )
+        .bind(draft.id.as_str())
+        .bind(draft.account_id.as_str())
+        .bind(from_addr)
+        .bind(in_reply_to)
+        .bind(draft.intent.as_db_str())
+        .bind(to_addrs)
+        .bind(cc_addrs)
+        .bind(bcc_addrs)
+        .bind(&draft.subject)
+        .bind(&content.body_markdown)
+        .bind(&content.body_html)
+        .bind(&content.body_text)
+        .bind(content.kind)
+        .bind(attachments)
+        .bind(inline_assets)
+        .bind(inline_calendar_reply_json)
+        .bind(draft.created_at.timestamp())
+        .bind(draft.updated_at.timestamp())
+        .bind(provider_draft_id)
+        .bind(provider_draft_revision)
+        .bind(draft.account_id.as_str())
+        .bind(provider_draft_id)
+        .execute(self.writer())
+        .await
+        .map(|result| result.rows_affected() == 1)
+    }
+
     pub async fn insert_draft_if_absent(&self, draft: &Draft) -> Result<(), sqlx::Error> {
         let id = draft.id.as_str();
         let account_id = draft.account_id.as_str();
@@ -321,6 +379,17 @@ impl super::Store {
         Ok(())
     }
 
+    /// Delete only a draft that is still editable. This closes the race where
+    /// provider reconciliation observes a remote 404 while send has already
+    /// transitioned the local row to `sending`.
+    pub async fn delete_editable_draft(&self, id: &DraftId) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM drafts WHERE id = ? AND status = 'draft'")
+            .bind(id.as_str())
+            .execute(self.writer())
+            .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     /// Return the stable provider draft resource ID linked to a local draft.
     pub async fn get_provider_draft_id(&self, id: &DraftId) -> Result<Option<String>, sqlx::Error> {
         let row: Option<(Option<String>,)> =
@@ -363,6 +432,66 @@ impl super::Store {
         .execute(self.writer())
         .await?;
         Ok(result.rows_affected() == 1)
+    }
+
+    /// Atomically make `id` the canonical local row for a provider draft.
+    /// Any discovery row created during the remote-create/link gap is removed
+    /// in the same transaction and returned for attachment-cache cleanup.
+    pub async fn claim_provider_draft_link(
+        &self,
+        id: &DraftId,
+        provider_draft_id: &str,
+        revision: Option<&str>,
+    ) -> Result<Option<Vec<DraftId>>, sqlx::Error> {
+        let mut transaction = self.writer().begin().await?;
+        let account_id: Option<String> =
+            sqlx::query_scalar("SELECT account_id FROM drafts WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&mut *transaction)
+                .await?;
+        let Some(account_id) = account_id else {
+            transaction.rollback().await?;
+            return Ok(None);
+        };
+        let duplicate_rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, status FROM drafts WHERE account_id = ? AND provider_draft_id = ? AND id <> ?",
+        )
+        .bind(&account_id)
+        .bind(provider_draft_id)
+        .bind(id.as_str())
+        .fetch_all(&mut *transaction)
+        .await?;
+        if let Some((duplicate_id, status)) =
+            duplicate_rows.iter().find(|(_, status)| status != "draft")
+        {
+            transaction.rollback().await?;
+            return Err(sqlx::Error::Protocol(format!(
+                "provider draft {provider_draft_id} is already linked to protected local draft {duplicate_id} with status {status}"
+            )));
+        }
+        sqlx::query(
+            "DELETE FROM drafts WHERE account_id = ? AND provider_draft_id = ? AND id <> ? AND status = 'draft'",
+        )
+        .bind(&account_id)
+        .bind(provider_draft_id)
+        .bind(id.as_str())
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "UPDATE drafts SET provider_draft_id = ?, provider_draft_revision = ? WHERE id = ?",
+        )
+        .bind(provider_draft_id)
+        .bind(revision)
+        .bind(id.as_str())
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(Some(
+            duplicate_rows
+                .into_iter()
+                .filter_map(|(id, _)| id.parse().ok())
+                .collect(),
+        ))
     }
 
     pub async fn set_provider_draft_revision(
@@ -452,7 +581,28 @@ impl super::Store {
         )
         .fetch_optional(self.reader())
         .await?;
-        Ok(row.and_then(|r| r.message_id_header))
+        Ok(row.and_then(|row| row.message_id_header))
+    }
+
+    /// Find a local draft by its stable RFC 5322 Message-ID within an account.
+    pub async fn find_draft_by_message_id_header(
+        &self,
+        account_id: &AccountId,
+        message_id: &str,
+    ) -> Result<Option<DraftId>, sqlx::Error> {
+        let normalized = message_id
+            .trim()
+            .trim_start_matches('<')
+            .trim_end_matches('>')
+            .to_ascii_lowercase();
+        let id: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM drafts WHERE account_id = ? AND lower(trim(message_id_header, '<> ')) = ? ORDER BY created_at ASC, id ASC LIMIT 1",
+        )
+        .bind(account_id.as_str())
+        .bind(normalized)
+        .fetch_optional(self.reader())
+        .await?;
+        Ok(id.and_then(|id| id.parse().ok()))
     }
 
     /// Persist the RFC 5322 Message-ID header on the draft. Idempotent.
@@ -485,13 +635,15 @@ impl super::Store {
         let expected_str = expected.as_db_str();
         let new_str = new.as_db_str();
         let now = chrono::Utc::now().timestamp();
-        let result = sqlx::query!(
-            "UPDATE drafts SET status = ?, status_updated_at = ? WHERE id = ? AND status = ?",
-            new_str,
-            now,
-            id_str,
-            expected_str,
+        let result = sqlx::query(
+            "UPDATE drafts
+                SET status = ?, status_updated_at = ?, send_outcome_unknown = 0
+              WHERE id = ? AND status = ?",
         )
+        .bind(new_str)
+        .bind(now)
+        .bind(id_str)
+        .bind(expected_str)
         .execute(self.writer())
         .await?;
         Ok(result.rows_affected() == 1)
@@ -507,15 +659,32 @@ impl super::Store {
         let id_str = id.as_str();
         let status_str = status.as_db_str();
         let now = chrono::Utc::now().timestamp();
-        sqlx::query!(
-            "UPDATE drafts SET status = ?, status_updated_at = ? WHERE id = ?",
-            status_str,
-            now,
-            id_str,
+        sqlx::query(
+            "UPDATE drafts
+                SET status = ?, status_updated_at = ?, send_outcome_unknown = 0
+              WHERE id = ?",
         )
+        .bind(status_str)
+        .bind(now)
+        .bind(id_str)
         .execute(self.writer())
         .await?;
         Ok(())
+    }
+
+    /// Mark a provider send as ambiguous without making it automatically
+    /// retryable. The draft remains in `sending` until explicit resolution.
+    pub async fn mark_draft_send_outcome_unknown(&self, id: &DraftId) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE drafts
+                SET send_outcome_unknown = 1, status_updated_at = ?
+              WHERE id = ? AND status = 'sending'",
+        )
+        .bind(chrono::Utc::now().timestamp())
+        .bind(id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn record_sent_draft_receipt(

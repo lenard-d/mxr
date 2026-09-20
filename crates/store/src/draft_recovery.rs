@@ -53,22 +53,45 @@ impl super::Store {
         cutoff: DateTime<Utc>,
     ) -> Result<Vec<DraftId>, sqlx::Error> {
         let cutoff_ts = cutoff.timestamp();
-        let rows = sqlx::query!(
-            r#"SELECT id as "id!"
+        let rows: Vec<String> = sqlx::query_scalar(
+            r#"SELECT id
                FROM drafts
                WHERE status = 'sending'
+                 AND send_outcome_unknown = 0
                  AND COALESCE(last_heartbeat_at, status_updated_at, updated_at) < ?
                ORDER BY status_updated_at ASC"#,
-            cutoff_ts,
         )
+        .bind(cutoff_ts)
         .fetch_all(self.reader())
         .await?;
-        rows.into_iter().map(|r| crate::decode_id(&r.id)).collect()
+        rows.into_iter().map(|id| crate::decode_id(&id)).collect()
     }
 
-    /// Reset a stuck `'sending'` draft back to `'draft'` so the user
-    /// can retry. Idempotent — already-`'draft'` rows return without
-    /// error; `'sent'` rows refuse.
+    /// Drafts that require an explicit human resolution: stale in-flight
+    /// sends plus every provider send whose delivery outcome is unknown.
+    pub async fn list_drafts_requiring_resolution(
+        &self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<DraftId>, sqlx::Error> {
+        let cutoff_ts = cutoff.timestamp();
+        let rows: Vec<String> = sqlx::query_scalar(
+            r#"SELECT id
+               FROM drafts
+               WHERE status = 'sending'
+                 AND (send_outcome_unknown = 1
+                      OR COALESCE(last_heartbeat_at, status_updated_at, updated_at) < ?)
+               ORDER BY status_updated_at ASC"#,
+        )
+        .bind(cutoff_ts)
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter().map(|id| crate::decode_id(&id)).collect()
+    }
+
+    /// Explicitly reset a stuck or ambiguous `'sending'` draft back to
+    /// `'draft'` after the user has verified that retrying is safe.
+    /// Idempotent — already-`'draft'` rows return without error; `'sent'` rows
+    /// refuse.
     pub async fn reset_orphaned_draft(&self, draft_id: &DraftId) -> Result<bool, sqlx::Error> {
         let advanced = self
             .cas_draft_status(draft_id, DraftStatus::Sending, DraftStatus::Draft)
@@ -172,6 +195,36 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(orphans, vec![id]);
+    }
+
+    #[tokio::test]
+    async fn unknown_delivery_requires_manual_resolution_and_never_auto_recovers() {
+        let store = Store::in_memory().await.unwrap();
+        let id = seed_draft(&store).await;
+        assert!(store
+            .cas_draft_status(&id, DraftStatus::Draft, DraftStatus::Sending)
+            .await
+            .unwrap());
+        assert!(store.mark_draft_send_outcome_unknown(&id).await.unwrap());
+        let far_future = Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0).unwrap();
+
+        assert!(store
+            .list_orphaned_sending_drafts(far_future)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            store
+                .list_drafts_requiring_resolution(far_future)
+                .await
+                .unwrap(),
+            vec![id.clone()]
+        );
+        assert!(store.reset_orphaned_draft(&id).await.unwrap());
+        assert_eq!(
+            store.get_draft_status(&id).await.unwrap(),
+            Some(DraftStatus::Draft)
+        );
     }
 
     #[tokio::test]

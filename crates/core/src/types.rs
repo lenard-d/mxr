@@ -1613,6 +1613,8 @@ pub struct Draft {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerDraftSnapshot {
     pub revision: String,
+    /// Provider-native conversation identifier, when the provider exposes one.
+    pub thread_id: Option<String>,
     pub raw_rfc822: Vec<u8>,
 }
 

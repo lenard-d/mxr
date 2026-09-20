@@ -1723,7 +1723,10 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     let mut draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
-        from: None,
+        from: Some(mxr_core::types::Address {
+            name: None,
+            email: "user@example.com".into(),
+        }),
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1866,16 +1869,152 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
         .server_drafts()
         .contains_key(&locally_deleted_provider_id));
 
-    mxr_core::MailSendProvider::delete_draft(fake.as_ref(), &provider_draft_id)
-        .await
-        .unwrap();
+    let send_linked = handle_request(
+        &state,
+        &IpcMessage {
+            id: 55,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+                override_safety_token: None,
+            }),
+        },
+    )
+    .await;
+    assert!(
+        matches!(
+            &send_linked.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SendReceipt { .. }
+            })
+        ),
+        "unexpected linked-send response: {:?}",
+        send_linked.payload
+    );
+    assert!(
+        !fake.server_drafts().contains_key(&provider_draft_id),
+        "sending a linked draft must consume the provider draft"
+    );
     assert_eq!(
         reconcile_provider_drafts(&state, &draft.account_id)
             .await
             .unwrap(),
-        1
+        0
     );
     assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn reconcile_provider_drafts_imports_an_unlinked_provider_draft() {
+    let account_id = mxr_core::AccountId::new();
+    let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+    let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+    let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+            .await
+            .unwrap(),
+    );
+    let remote = mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id: account_id.clone(),
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "recipient@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Created in Gmail".into(),
+        content: mxr_core::types::DraftContent::html(
+            "<p>Remote-only <strong>body</strong></p>",
+            Some("Remote-only body".into()),
+        ),
+        attachments: vec![],
+        inline_assets: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    let provider_draft_id = mxr_core::MailSendProvider::save_draft(
+        fake.as_ref(),
+        &remote,
+        &mxr_core::types::Address {
+            name: None,
+            email: "sender@example.com".into(),
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    assert!(state
+        .store
+        .list_drafts(&account_id)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        reconcile_provider_drafts(&state, &account_id)
+            .await
+            .unwrap(),
+        0
+    );
+
+    let imported = state.store.list_drafts(&account_id).await.unwrap();
+    assert_eq!(imported.len(), 1);
+    assert_eq!(imported[0].subject, "Created in Gmail");
+    assert!(matches!(
+        &imported[0].content,
+        mxr_core::types::DraftContent::Html { html, text }
+            if html == "<p>Remote-only <strong>body</strong></p>"
+                && text.as_deref() == Some("Remote-only body")
+    ));
+    assert_eq!(
+        state
+            .store
+            .get_provider_draft_id(&imported[0].id)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some(provider_draft_id.as_str())
+    );
+
+    let local_draft_id = imported[0].id.clone();
+    let edited_remote = mxr_core::types::Draft {
+        subject: "Edited in Gmail".into(),
+        content: mxr_core::types::DraftContent::markdown("Updated remote body"),
+        updated_at: chrono::Utc::now(),
+        ..remote
+    };
+    assert!(fake.replace_server_draft(&provider_draft_id, edited_remote));
+    reconcile_provider_drafts(&state, &account_id)
+        .await
+        .unwrap();
+    let updated = state.store.list_drafts(&account_id).await.unwrap();
+    assert_eq!(updated.len(), 1, "remote edits must not duplicate a draft");
+    assert_eq!(updated[0].id, local_draft_id);
+    assert_eq!(updated[0].subject, "Edited in Gmail");
+    assert_eq!(updated[0].content.analysis_text(), "Updated remote body");
+
+    mxr_core::MailSendProvider::delete_draft(fake.as_ref(), &provider_draft_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reconcile_provider_drafts(&state, &account_id)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(state
+        .store
+        .list_drafts(&account_id)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 /// A manual sync returns after one page. When the provider still has
