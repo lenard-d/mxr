@@ -2031,23 +2031,38 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
         if let Some(threaded) = resolved_reply_thread(sender.as_ref(), &draft).await {
             draft = Cow::Owned(threaded);
         }
-        match sender.update_draft(&provider_draft_id, &draft, &from).await {
-            Ok(()) => {
-                updated_provider_revision = sender
-                    .fetch_draft(&provider_draft_id)
+        match sender
+            .replace_draft(&provider_draft_id, &draft, &from)
+            .await
+        {
+            Ok(replacement_id) => {
+                let revision = sender
+                    .fetch_draft(&replacement_id)
                     .await
                     .ok()
                     .flatten()
                     .map(|snapshot| snapshot.revision);
+                if replacement_id != provider_draft_id {
+                    let duplicate_ids = state
+                        .store
+                        .claim_provider_draft_link(&draft.id, &replacement_id, revision.as_deref())
+                        .await?
+                        .ok_or_else(|| format!("Draft not found: {}", draft.id))?;
+                    for duplicate_id in duplicate_ids {
+                        remove_provider_draft_cache(state, &duplicate_id).await;
+                    }
+                    updated_provider_revision = None;
+                } else {
+                    updated_provider_revision = revision;
+                }
             }
             Err(MxrError::NotFound(_)) => {
                 let message_id = ensure_draft_message_id(state, &draft.id, &from).await?;
                 let replacement_id = match sender.find_draft_by_message_id(&message_id).await? {
                     Some(provider_draft_id) => {
                         sender
-                            .update_draft(&provider_draft_id, &draft, &from)
-                            .await?;
-                        provider_draft_id
+                            .replace_draft(&provider_draft_id, &draft, &from)
+                            .await?
                     }
                     None => sender
                         .save_draft_with_message_id(&draft, &from, &message_id)
@@ -2156,12 +2171,14 @@ pub(crate) async fn reconcile_provider_drafts(
         _ => return Ok(0),
     };
     let _provider_guard = state.acquire_provider_operation(account_id).await;
-    let mut provider_ids = sender
+    let mut discovered_provider_ids = sender
         .list_draft_ids()
         .await
         .map_err(|error| format!("failed to list provider drafts: {error}"))?
         .into_iter()
-        .collect::<HashSet<_>>();
+        .collect::<Vec<_>>();
+    discovered_provider_ids.sort();
+    discovered_provider_ids.dedup();
     let linked_rows = state
         .store
         .list_provider_draft_links(account_id)
@@ -2175,17 +2192,31 @@ pub(crate) async fn reconcile_provider_drafts(
             .push((local_id, revision));
     }
 
-    if provider_ids.is_empty() && links.is_empty() {
+    if discovered_provider_ids.is_empty() && links.is_empty() {
         return Ok(0);
     }
     // Provider discovery finds unlinked drafts. Existing links are added to
     // the verification set independently: a draft is deleted locally only
     // after its direct resource lookup returns an explicit not-found, never
     // merely because a list response omitted it.
-    provider_ids.extend(links.keys().cloned());
+    // Reconcile drafts that still exist remotely before stale linked IDs. This
+    // ordering lets a replacement UID reclaim its local row after a crash
+    // between deleting the old UID and persisting the new link. IMAP draft IDs
+    // use zero-padded UIDs, so replacement UIDs sort after predecessors.
+    let discovered_set = discovered_provider_ids
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let mut stale_linked_ids = links
+        .keys()
+        .filter(|provider_id| !discovered_set.contains(*provider_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    stale_linked_ids.sort();
+    discovered_provider_ids.extend(stale_linked_ids);
 
     let mut removed = 0;
-    for provider_draft_id in provider_ids {
+    for provider_draft_id in discovered_provider_ids {
         let mut linked = links.remove(&provider_draft_id);
         let snapshot = sender
             .fetch_draft(&provider_draft_id)
@@ -2358,6 +2389,20 @@ pub(crate) async fn reconcile_provider_drafts(
             }
             (Some(linked_drafts), None) => {
                 for (local_draft_id, _) in linked_drafts {
+                    let current_provider_id = state
+                        .store
+                        .get_provider_draft_id(&local_draft_id)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    if current_provider_id.as_deref() != Some(provider_draft_id.as_str()) {
+                        tracing::debug!(
+                            %local_draft_id,
+                            stale_provider_draft_id = provider_draft_id,
+                            current_provider_draft_id = ?current_provider_id,
+                            "Skipped stale provider deletion after draft was relinked"
+                        );
+                        continue;
+                    }
                     let deleted = state
                         .store
                         .delete_editable_draft(&local_draft_id)
@@ -3721,18 +3766,38 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
     let threaded = resolved_reply_thread(sender.as_ref(), draft).await;
     let draft = threaded.as_ref().unwrap_or(draft);
     if let Some(provider_draft_id) = state.store.get_provider_draft_id(&draft.id).await? {
-        match sender.update_draft(&provider_draft_id, draft, &from).await {
-            Ok(()) => {
+        match sender.replace_draft(&provider_draft_id, draft, &from).await {
+            Ok(replacement_id) => {
                 if threaded.is_some() {
                     persist_reply_thread_id(state, draft).await;
                 }
-                if let Ok(Some(snapshot)) = sender.fetch_draft(&provider_draft_id).await {
+                let revision = match sender.fetch_draft(&replacement_id).await {
+                    Ok(Some(snapshot)) => Some(snapshot.revision),
+                    Ok(None) => None,
+                    Err(error) => {
+                        tracing::warn!(replacement_id, %error, "could not read server draft revision after update");
+                        None
+                    }
+                };
+                if replacement_id != provider_draft_id {
+                    let duplicate_ids = state
+                        .store
+                        .claim_provider_draft_link(&draft.id, &replacement_id, revision.as_deref())
+                        .await?
+                        .ok_or_else(|| format!("Draft not found: {}", draft.id))?;
+                    for duplicate_id in duplicate_ids {
+                        remove_provider_draft_cache(state, &duplicate_id).await;
+                    }
+                } else if let Some(revision) = revision {
                     state
                         .store
-                        .set_provider_draft_revision(&draft.id, &snapshot.revision)
+                        .set_provider_draft_revision(&draft.id, &revision)
                         .await?;
                 }
-                tracing::info!(provider_draft_id, "Draft updated on server");
+                tracing::info!(
+                    provider_draft_id = replacement_id,
+                    "Draft updated on server"
+                );
                 return Ok(ResponseData::Ack);
             }
             Err(MxrError::NotFound(_)) => {
@@ -3748,12 +3813,13 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
     let message_id = ensure_draft_message_id(state, &draft.id, &from).await?;
     let existing_provider_draft_id = sender.find_draft_by_message_id(&message_id).await?;
     let (save_result, created_remotely) = match existing_provider_draft_id {
-        Some(provider_draft_id) => {
+        Some(provider_draft_id) => (
             sender
-                .update_draft(&provider_draft_id, draft, &from)
-                .await?;
-            (Ok(Some(provider_draft_id)), false)
-        }
+                .replace_draft(&provider_draft_id, draft, &from)
+                .await
+                .map(Some),
+            false,
+        ),
         None => (
             sender
                 .save_draft_with_message_id(draft, &from, &message_id)

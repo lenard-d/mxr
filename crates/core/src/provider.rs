@@ -222,6 +222,22 @@ pub trait MailSendProvider: Send + Sync {
         ))
     }
 
+    /// Replace an existing server-side draft and return the provider ID of the
+    /// replacement. Most providers update a stable resource in place, so the
+    /// compatibility default delegates to `update_draft` and returns the old
+    /// ID. IMAP drafts are different: RFC 3501 clients normally replace a
+    /// draft with APPEND + targeted deletion, which necessarily creates a new
+    /// UID and therefore a new provider ID.
+    async fn replace_draft(
+        &self,
+        provider_draft_id: &str,
+        draft: &Draft,
+        from: &Address,
+    ) -> Result<String> {
+        self.update_draft(provider_draft_id, draft, from).await?;
+        Ok(provider_draft_id.to_string())
+    }
+
     /// Fetch the provider's current raw MIME draft plus its revision marker.
     /// `Ok(None)` means the provider draft no longer exists.
     async fn fetch_draft(&self, _provider_draft_id: &str) -> Result<Option<ServerDraftSnapshot>> {

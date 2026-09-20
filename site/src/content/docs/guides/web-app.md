@@ -188,10 +188,11 @@ Each row opens the stored draft composer; editing a linked draft updates the
 same provider draft. Deletion requires confirmation and removes both linked
 copies, provider first. A provider failure preserves the local draft.
 
-For accounts with provider-draft support (currently Gmail), the compose menu
-shows **Save to server draft**. It stores the local draft and creates or
-updates one linked provider draft. Normal sync pulls provider-side edits into
-the same local row and removes that row after provider-side deletion.
+For accounts with provider-draft support (Gmail API or IMAP sync plus SMTP),
+the compose menu shows **Save to server draft**. It stores the local draft and
+creates or updates one linked provider draft. IMAP uses the server-advertised
+`\Drafts` SPECIAL-USE mailbox. Normal sync pulls provider-side edits into the
+same local row and removes that row after provider-side deletion.
 
 The compose pane fetches contact suggestions from
 `GET /api/v1/mail/contacts/autocomplete?q=...` with a 200 ms debounce.

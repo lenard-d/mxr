@@ -1226,6 +1226,9 @@ pub mod mock {
         /// Per-mailbox UID set returned by `UID SEARCH ALL`. None means an empty
         /// set; tests opt in by inserting via `MockImapSessionFactory`.
         pub(crate) uid_search_results: HashMap<String, Vec<u32>>,
+        /// Ordered SEARCH results for tests that model mailbox state changing
+        /// across APPEND. Static results remain the fallback when exhausted.
+        pub(crate) uid_search_queues: HashMap<String, VecDeque<Vec<u32>>>,
         /// UID returned by `uid_append` (simulating a UIDPLUS server's
         /// APPENDUID). `None` mimics a server that does not report the UID.
         pub(crate) append_uid: Option<u32>,
@@ -1366,10 +1369,15 @@ pub mod mock {
                 .selected_mailbox
                 .clone()
                 .unwrap_or_else(|| "INBOX".to_string());
-            Ok(self
-                .state
-                .lock()
-                .unwrap()
+            let mut state = self.state.lock().unwrap();
+            if let Some(result) = state
+                .uid_search_queues
+                .get_mut(&mailbox)
+                .and_then(VecDeque::pop_front)
+            {
+                return Ok(result);
+            }
+            Ok(state
                 .uid_search_results
                 .get(&mailbox)
                 .cloned()
@@ -1508,6 +1516,7 @@ pub mod mock {
                 state: Arc::new(Mutex::new(MockSessionState {
                     fetch_queues_by_mailbox,
                     uid_search_results,
+                    uid_search_queues: HashMap::new(),
                     append_uid: None,
                 })),
                 idle_trigger: None,
@@ -1552,6 +1561,15 @@ pub mod mock {
                 .unwrap()
                 .uid_search_results
                 .insert(mailbox.to_string(), uids);
+            self
+        }
+
+        pub fn with_uid_search_responses(self, mailbox: &str, responses: Vec<Vec<u32>>) -> Self {
+            self.state
+                .lock()
+                .unwrap()
+                .uid_search_queues
+                .insert(mailbox.to_string(), responses.into());
             self
         }
 
@@ -1726,6 +1744,7 @@ mod tests {
         Arc::new(Mutex::new(MockSessionState {
             fetch_queues_by_mailbox: build_fetch_queues(&fetch_responses, &folders),
             uid_search_results: HashMap::new(),
+            uid_search_queues: HashMap::new(),
             append_uid: None,
         }))
     }

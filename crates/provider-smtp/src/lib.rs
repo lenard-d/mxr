@@ -209,17 +209,20 @@ impl MailSendProvider for SmtpSendProvider {
     }
 }
 
-/// Transient (4xx) responses and timeouts are worth retrying; permanent (5xx)
-/// responses and everything else are hard failures.
-fn is_retryable(is_transient: bool, is_timeout: bool) -> bool {
-    is_transient || is_timeout
-}
-
 /// Map a send failure onto the core error taxonomy. Split out from
 /// `classify_smtp_send_error` so the decision and message can be unit-tested
 /// without a `lettre` error (which has no public constructor).
-fn map_send_error(retryable: bool, error: impl std::fmt::Display) -> MxrError {
-    if retryable {
+fn map_send_error(
+    is_transient: bool,
+    is_ambiguous_transport: bool,
+    error: impl std::fmt::Display,
+) -> MxrError {
+    if is_ambiguous_transport {
+        // A timeout, shutdown, or network failure can occur after the SMTP
+        // server accepted DATA. Retrying is unsafe because SMTP has no
+        // idempotent send resource to query.
+        MxrError::SendOutcomeUnknown(format!("SMTP send outcome is unknown: {error}"))
+    } else if is_transient {
         // SMTP carries no Retry-After hint; 60s is a sane default backoff so the
         // daemon can reschedule the send instead of hard-failing it.
         MxrError::RateLimited {
@@ -234,7 +237,12 @@ fn map_send_error(retryable: bool, error: impl std::fmt::Display) -> MxrError {
 /// failures (4xx / timeout) and hard-fails on permanent ones (5xx).
 #[cfg(not(test))]
 fn classify_smtp_send_error(e: &lettre::transport::smtp::Error) -> MxrError {
-    map_send_error(is_retryable(e.is_transient(), e.is_timeout()), e)
+    // Only local client-construction failures and explicit SMTP 4xx/5xx
+    // replies prove a send did not succeed. Network/TLS/shutdown/timeout and
+    // malformed or incomplete response errors can all happen after DATA was
+    // accepted, so every other class is ambiguous.
+    let is_ambiguous_transport = !e.is_client() && !e.is_transient() && !e.is_permanent();
+    map_send_error(e.is_transient(), is_ambiguous_transport, e)
 }
 
 async fn load_attachments(paths: &[PathBuf]) -> Result<Vec<LoadedAttachment>, MxrError> {
@@ -364,23 +372,19 @@ mod tests {
     }
 
     #[test]
-    fn is_retryable_covers_transient_timeout_and_permanent() {
-        assert!(is_retryable(true, false));
-        assert!(is_retryable(false, true));
-        assert!(is_retryable(true, true));
-        assert!(!is_retryable(false, false));
-    }
-
-    #[test]
-    fn map_send_error_maps_transient_to_rate_limited_and_permanent_to_provider() {
+    fn map_send_error_preserves_ambiguous_timeouts() {
         assert!(matches!(
-            map_send_error(true, "transient boom"),
+            map_send_error(true, false, "transient boom"),
             MxrError::RateLimited {
                 retry_after_secs: 60
             }
         ));
         assert!(matches!(
-            map_send_error(false, "permanent boom"),
+            map_send_error(false, true, "timeout boom"),
+            MxrError::SendOutcomeUnknown(msg) if msg.contains("timeout boom")
+        ));
+        assert!(matches!(
+            map_send_error(false, false, "permanent boom"),
             MxrError::Provider(msg) if msg == "SMTP send failed: permanent boom"
         ));
     }
