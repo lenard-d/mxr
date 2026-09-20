@@ -2470,7 +2470,11 @@ async fn draft_from_server_snapshot(
         .join(uuid::Uuid::now_v7().to_string());
     let mut attachments = Vec::new();
     let mut inline_assets = Vec::new();
+    let attached_multipart_descendants = attached_multipart_descendants(&parsed);
     for (index, part) in parsed.parts.iter().enumerate() {
+        if attached_multipart_descendants.contains(&index) {
+            continue;
+        }
         let disposition = remote_attachment_disposition(part);
         if !is_remote_attachment_part(part, disposition) {
             continue;
@@ -2640,11 +2644,41 @@ fn is_remote_attachment_part(
     if part.is_message() {
         return true;
     }
-    matches!(
-        disposition,
-        AttachmentDisposition::Attachment | AttachmentDisposition::Inline
-    ) || matches!(part.body, PartType::Binary(_) | PartType::InlineBinary(_))
+    matches!(disposition, AttachmentDisposition::Attachment)
+        || matches!(part.body, PartType::Binary(_) | PartType::InlineBinary(_))
         || part.attachment_name().is_some()
+}
+
+fn attached_multipart_descendants(parsed: &mail_parser::Message<'_>) -> HashSet<usize> {
+    let mut descendants = HashSet::new();
+    for (index, part) in parsed.parts.iter().enumerate() {
+        if descendants.contains(&index)
+            || !part.is_multipart()
+            || !is_remote_attachment_part(part, remote_attachment_disposition(part))
+        {
+            continue;
+        }
+        collect_multipart_descendants(parsed, index as u32, &mut descendants);
+    }
+    descendants
+}
+
+fn collect_multipart_descendants(
+    parsed: &mail_parser::Message<'_>,
+    part_id: u32,
+    descendants: &mut HashSet<usize>,
+) {
+    let Some(part) = parsed.parts.get(part_id as usize) else {
+        return;
+    };
+    let PartType::Multipart(children) = &part.body else {
+        return;
+    };
+    for child_id in children {
+        if descendants.insert(*child_id as usize) {
+            collect_multipart_descendants(parsed, *child_id, descendants);
+        }
+    }
 }
 
 fn normalize_remote_content_id(value: &str) -> Option<String> {
@@ -2710,6 +2744,19 @@ mod remote_draft_mime_tests {
             content,
             DraftContent::Markdown { source }
                 if source.contains("Sender <sender@example.com> wrote:")
+        ));
+    }
+
+    #[test]
+    fn unnamed_inline_text_parts_remain_the_message_body() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Disposition: inline\r\n\r\nInline plain body\r\n--x\r\nContent-Type: text/html; charset=utf-8\r\nContent-Disposition: inline\r\n\r\n<p>Inline HTML body</p>\r\n--x--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let (text, html) = exact_provider_draft_bodies(&parsed);
+        let content = imported_provider_draft_content(None, text, html);
+
+        assert!(matches!(
+            content,
+            DraftContent::Markdown { source } if source.contains("Inline plain body")
         ));
     }
 
@@ -2809,6 +2856,18 @@ mod remote_draft_mime_tests {
         ));
         assert_eq!(remote_attachment_filename(part, 1), "bundle.mime.eml");
         assert!(part.offset_end > part.offset_header);
+
+        let descendants = attached_multipart_descendants(&parsed);
+        let emitted_attachments = parsed
+            .parts
+            .iter()
+            .enumerate()
+            .filter(|(index, part)| {
+                !descendants.contains(index)
+                    && is_remote_attachment_part(part, remote_attachment_disposition(*part))
+            })
+            .count();
+        assert_eq!(emitted_attachments, 1);
     }
 }
 
