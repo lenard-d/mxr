@@ -48,7 +48,8 @@ jobs:
         run: |
           mkdir -p dist
           cp target-cli/x86_64-unknown-linux-gnu/release/mxr dist/mxr
-          sha256sum dist/mxr > dist/mxr.sha256
+          cd dist
+          sha256sum mxr > mxr.sha256
 
       - name: Smoke binary
         run: dist/mxr --version

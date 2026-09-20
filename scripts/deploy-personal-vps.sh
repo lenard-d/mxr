@@ -44,11 +44,13 @@ tmp_dir="$(mktemp -d /tmp/mxr-deploy.XXXXXXXX)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 gh run download "$run_id" --repo "$repo" --name "$artifact" --dir "$tmp_dir"
-(
-  cd "$tmp_dir"
-  sha256sum -c mxr.sha256
-)
 [[ -x "$tmp_dir/mxr" || -f "$tmp_dir/mxr" ]] || die "artifact does not contain mxr"
+checksum_line="$(<"$tmp_dir/mxr.sha256")"
+expected_checksum="${checksum_line%% *}"
+actual_checksum_line="$(sha256sum "$tmp_dir/mxr")"
+actual_checksum="${actual_checksum_line%% *}"
+[[ "$actual_checksum" == "$expected_checksum" ]] || die "artifact checksum does not match"
+printf 'mxr: checksum OK\n'
 
 install -m 0755 "$tmp_dir/mxr" "$target.new"
 "$target.new" --version
