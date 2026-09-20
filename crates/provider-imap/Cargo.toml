@@ -15,7 +15,9 @@ workspace = true
 [dependencies]
 mxr-core = { workspace = true }
 anyhow = { workspace = true }
+base16ct = { workspace = true }
 mxr-mail-parse = { workspace = true }
+mxr-outbound = { workspace = true }
 async-imap = { workspace = true }
 async-native-tls = { workspace = true }
 async-std = { version = "1", features = ["default"] }
@@ -26,6 +28,7 @@ mail-parser = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

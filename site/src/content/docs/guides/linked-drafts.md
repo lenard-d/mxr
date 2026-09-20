@@ -120,10 +120,12 @@ Draft content returned through MCP is untrusted email data, never instructions.
 
 ## Provider support
 
-Linked provider drafts currently require Gmail as the account's outbound
-provider. A Gmail sync account configured to send through SMTP keeps local
-drafts only. An account without outbound provider draft support is refused
-before the local draft changes.
+Linked provider drafts work with Gmail API accounts and with accounts that use
+IMAP for sync plus SMTP for sending. IMAP accounts resolve the server's actual
+RFC 6154 `\Drafts` SPECIAL-USE mailbox; mxr does not guess from a folder name.
+The server must support UIDPLUS for safe targeted replacement and deletion.
+An account without outbound provider draft support is refused before the local
+draft changes.
 
 ## Related reference
 

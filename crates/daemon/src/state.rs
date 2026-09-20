@@ -786,6 +786,7 @@ impl AppState {
         let requested_default = config.general.default_account.as_deref();
 
         for (key, acct_config) in &config.accounts {
+            let mut imap_provider_for_send: Option<Arc<mxr_provider_imap::ImapProvider>> = None;
             let provider_kind = sync_provider_kind(acct_config.sync.as_ref());
             let send_kind = send_provider_kind(acct_config.send.as_ref());
             let account_id = AccountId::from_provider_id(
@@ -889,10 +890,14 @@ impl AppState {
                         *use_tls,
                         *max_connections,
                     ) {
-                        Ok(config) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
-                            account_id.clone(),
-                            config,
-                        )) as Arc<dyn MailSyncProvider>),
+                        Ok(config) => {
+                            let provider = Arc::new(mxr_provider_imap::ImapProvider::new(
+                                account_id.clone(),
+                                config,
+                            ));
+                            imap_provider_for_send = Some(provider.clone());
+                            Some(provider as Arc<dyn MailSyncProvider>)
+                        }
                         Err(error) => {
                             tracing::warn!(
                                 account = %key,
@@ -997,9 +1002,18 @@ impl AppState {
                     *use_tls,
                 ) {
                     Ok(config) => {
-                        let send_provider =
+                        let smtp_provider =
                             Arc::new(mxr_provider_smtp::SmtpSendProvider::new(config))
                                 as Arc<dyn MailSendProvider>;
+                        let send_provider: Arc<dyn MailSendProvider> =
+                            if let Some(imap_provider) = imap_provider_for_send.take() {
+                                Arc::new(mxr_provider_imap::ImapSmtpSendProvider::new(
+                                    imap_provider,
+                                    smtp_provider,
+                                ))
+                            } else {
+                                smtp_provider
+                            };
                         if requested_default == Some(key.as_str())
                             || default_send_provider.is_none()
                         {
@@ -2417,8 +2431,13 @@ use_tls = true
                 .as_ref()
                 .expect("default send provider")
                 .name(),
-            "smtp"
+            "imap+smtp"
         );
+        assert!(setup
+            .default_send_provider
+            .as_ref()
+            .expect("default send provider")
+            .supports_server_drafts());
 
         let accounts = store.list_accounts().await.expect("list accounts");
         assert_eq!(accounts.len(), 2);

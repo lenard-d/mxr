@@ -8,6 +8,7 @@
 
 pub mod config;
 mod cursor;
+mod drafts;
 pub mod error;
 pub mod folders;
 pub mod parse;
@@ -17,6 +18,7 @@ pub mod types;
 use async_trait::async_trait;
 use config::ImapConfig;
 use cursor::{ImapBackfillCursor, ImapCursor};
+pub use drafts::ImapSmtpSendProvider;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use mxr_core::id::AccountId;
 use mxr_core::provider::MailSyncProvider;
@@ -415,15 +417,7 @@ impl ImapProvider {
         Ok(session)
     }
 
-    async fn delete_selected_message(
-        session: &mut dyn session::ImapSession,
-        uid: &str,
-        capabilities: &ImapCapabilities,
-    ) -> mxr_core::provider::Result<()> {
-        // Bare EXPUNGE deletes EVERY \Deleted message in the mailbox, not just
-        // the one we marked. Refuse to delete unless the server advertises
-        // UIDPLUS (RFC 4315) so we can target a specific UID. Callers should
-        // route deletes through `move_selected_message` when MOVE is available.
+    fn require_uidplus(capabilities: &ImapCapabilities) -> mxr_core::provider::Result<()> {
         if !capabilities.uidplus {
             return Err(mxr_core::MxrError::Provider(
                 "IMAP delete refused: server does not advertise UIDPLUS (RFC 4315). \
@@ -433,6 +427,19 @@ impl ImapProvider {
                     .into(),
             ));
         }
+        Ok(())
+    }
+
+    async fn delete_selected_message(
+        session: &mut dyn session::ImapSession,
+        uid: &str,
+        capabilities: &ImapCapabilities,
+    ) -> mxr_core::provider::Result<()> {
+        // Bare EXPUNGE deletes EVERY \\Deleted message in the mailbox, not just
+        // the one we marked. Refuse to delete unless the server advertises
+        // UIDPLUS (RFC 4315) so we can target a specific UID. Callers should
+        // route deletes through `move_selected_message` when MOVE is available.
+        Self::require_uidplus(capabilities)?;
 
         session
             .uid_store(uid, "+FLAGS (\\Deleted)")
@@ -1600,11 +1607,41 @@ impl MailSyncProvider for ImapProvider {
             return Ok(None);
         };
 
+        let message_id = drafts::message_id_from_rfc822(rfc822);
+        session
+            .select(&sent_mailbox)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let preexisting_uids = match message_id.as_deref() {
+            Some(message_id) => drafts::exact_message_id_uids(&mut *session, message_id).await?,
+            None => Vec::new(),
+        };
         // Mark the copy \Seen — a message you sent is already read.
-        let uid = session
+        let reported_uid = session
             .uid_append(&sent_mailbox, &["\\Seen"], rfc822)
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+        let uid = match (reported_uid, message_id.as_deref()) {
+            (Some(uid), _) => Some(uid),
+            (None, Some(message_id)) => {
+                let matches = drafts::exact_message_id_uids(&mut *session, message_id).await?;
+                let new_matches = matches
+                    .into_iter()
+                    .filter(|uid| !preexisting_uids.contains(uid))
+                    .collect::<Vec<_>>();
+                match new_matches.as_slice() {
+                    [uid] => Some(*uid),
+                    _ => {
+                        warn!(
+                            new_match_count = new_matches.len(),
+                            "Sent APPEND succeeded but its UID could not be identified uniquely"
+                        );
+                        None
+                    }
+                }
+            }
+            (None, None) => None,
+        };
         let _ = session.logout().await;
 
         Ok(uid.map(|uid| folders::format_provider_id(&sent_mailbox, uid)))

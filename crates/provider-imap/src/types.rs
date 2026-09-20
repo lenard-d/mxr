@@ -22,6 +22,18 @@ pub struct ImapCapabilities {
     pub x_gm_ext_1: bool,
 }
 
+/// Versioned identity for a server-side IMAP draft.
+///
+/// IMAP UIDs are only stable within one mailbox UIDVALIDITY epoch. Every
+/// provider draft ID therefore carries all three values and must never be
+/// reduced to a mailbox/UID pair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImapDraftIdentity {
+    pub mailbox: String,
+    pub uid_validity: u32,
+    pub uid: u32,
+}
+
 /// A single fetched message from IMAP FETCH.
 #[derive(Debug, Clone)]
 pub struct FetchedMessage {
