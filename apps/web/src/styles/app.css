@@ -299,16 +299,16 @@
   z-index: 4;
 }
 
-[data-sonner-toaster][data-show-error-toasts="false"] [data-sonner-toast][data-type="error"],
-[data-sonner-toaster][data-show-info-toasts="false"]
+[data-toast-preferences][data-show-error-toasts="false"] [data-sonner-toast][data-type="error"],
+[data-toast-preferences][data-show-info-toasts="false"]
   [data-sonner-toast]:is([data-type="info"], [data-type="warning"], [data-type="normal"]),
-[data-sonner-toaster][data-show-success-toasts="false"]
+[data-toast-preferences][data-show-success-toasts="false"]
   [data-sonner-toast][data-type="success"]:not(.toast-category-undo):not(.toast-category-sent):not(
     .toast-category-read-state
   ),
-[data-sonner-toaster][data-show-undo-toasts="false"] [data-sonner-toast].toast-category-undo,
-[data-sonner-toaster][data-show-sent-toasts="false"] [data-sonner-toast].toast-category-sent,
-[data-sonner-toaster][data-show-read-state-toasts="false"]
+[data-toast-preferences][data-show-undo-toasts="false"] [data-sonner-toast].toast-category-undo,
+[data-toast-preferences][data-show-sent-toasts="false"] [data-sonner-toast].toast-category-sent,
+[data-toast-preferences][data-show-read-state-toasts="false"]
   [data-sonner-toast].toast-category-read-state {
   display: none;
 }
