@@ -2462,14 +2462,7 @@ async fn draft_from_server_snapshot(
 
     let text = parsed.body_text(0).map(std::borrow::Cow::into_owned);
     let html = parsed.body_html(0).map(std::borrow::Cow::into_owned);
-    let content = match (existing.map(|draft| &draft.content), html, text) {
-        (Some(DraftContent::Html { .. }) | None, Some(html), text) => {
-            DraftContent::html(html, text)
-        }
-        (_, _, Some(text)) => DraftContent::markdown(text),
-        (_, Some(html), None) => DraftContent::html(html, None),
-        _ => DraftContent::markdown(String::new()),
-    };
+    let content = imported_provider_draft_content(text, html);
 
     let revision_dir = state
         .attachment_dir()
@@ -2564,6 +2557,20 @@ async fn draft_from_server_snapshot(
     })
 }
 
+fn imported_provider_draft_content(text: Option<String>, html: Option<String>) -> DraftContent {
+    // A provider-generated multipart/alternative draft commonly contains both
+    // text/plain and text/html even when the user composed ordinary text. The
+    // markdown composer can faithfully edit the plain part, whereas treating
+    // the mere presence of an HTML alternative as an authored HTML document
+    // makes normal Gmail/IMAP drafts read-only. Angle-bracketed addresses in
+    // reply attribution lines are plain text and require no HTML heuristic.
+    match (text, html) {
+        (Some(text), _) => DraftContent::markdown(text),
+        (None, Some(html)) => DraftContent::html(html, None),
+        _ => DraftContent::markdown(String::new()),
+    }
+}
+
 fn remote_attachment_disposition<'a>(headers: &impl MimeHeaders<'a>) -> AttachmentDisposition {
     match headers.content_disposition() {
         Some(disposition) if disposition.is_attachment() => AttachmentDisposition::Attachment,
@@ -2641,6 +2648,30 @@ fn is_remote_inline_asset(disposition: AttachmentDisposition, content_id: Option
 #[cfg(test)]
 mod remote_draft_mime_tests {
     use super::*;
+
+    #[test]
+    fn multipart_alternative_prefers_editable_plain_text() {
+        let content = imported_provider_draft_content(
+            Some("Sender <sender@example.com> wrote:\nHello".into()),
+            Some("<p>Hello</p>".into()),
+        );
+
+        assert!(matches!(
+            content,
+            DraftContent::Markdown { source }
+                if source == "Sender <sender@example.com> wrote:\nHello"
+        ));
+    }
+
+    #[test]
+    fn html_only_provider_draft_remains_html() {
+        let content = imported_provider_draft_content(None, Some("<p>Hello</p>".into()));
+
+        assert!(matches!(
+            content,
+            DraftContent::Html { html, text: None } if html == "<p>Hello</p>"
+        ));
+    }
 
     #[test]
     fn message_rfc822_without_disposition_or_name_is_importable() {

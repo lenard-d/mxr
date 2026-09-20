@@ -1931,7 +1931,7 @@ async fn reconcile_provider_drafts_imports_an_unlinked_provider_draft() {
         subject: "Created in Gmail".into(),
         content: mxr_core::types::DraftContent::html(
             "<p>Remote-only <strong>body</strong></p>",
-            Some("Remote-only body".into()),
+            Some("On Friday, Sender <sender@example.com> wrote:\nRemote-only body".into()),
         ),
         attachments: vec![],
         inline_assets: vec![],
@@ -1969,9 +1969,8 @@ async fn reconcile_provider_drafts_imports_an_unlinked_provider_draft() {
     assert_eq!(imported[0].subject, "Created in Gmail");
     assert!(matches!(
         &imported[0].content,
-        mxr_core::types::DraftContent::Html { html, text }
-            if html == "<p>Remote-only <strong>body</strong></p>"
-                && text.as_deref() == Some("Remote-only body")
+        mxr_core::types::DraftContent::Markdown { source }
+            if source == "On Friday, Sender <sender@example.com> wrote:\nRemote-only body"
     ));
     assert_eq!(
         state
