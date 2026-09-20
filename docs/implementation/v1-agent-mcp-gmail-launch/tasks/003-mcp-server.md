@@ -45,7 +45,7 @@ validation:
     - scripts/cargo-test -p mxr --lib
     - scripts/cargo-test -p mxr-mcp --tests
     - scripts/cargo-test -p mxr --test cli_help
-    - scripts/cargo-test -p mxr --test cli_journey
+    - scripts/cargo-test -p mxr --features demo --test cli_journey
   success_criteria:
     - "A first-party MCP server ships as an mxr command/binary and speaks stdio MCP using the official rmcp Rust SDK unless impossible."
     - "MCP tools use daemon IPC/client code rather than provider-specific direct access."

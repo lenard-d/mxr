@@ -395,6 +395,7 @@ impl LlmProvider for NoopProvider {
 /// `api_key` is optional — Ollama and LM Studio don't require one;
 /// hosted endpoints typically do. The header is omitted entirely when
 /// `api_key` is `None`.
+#[cfg(feature = "provider")]
 pub struct OpenAiCompatibleProvider {
     base_url: String,
     api_key: Option<String>,
@@ -404,6 +405,7 @@ pub struct OpenAiCompatibleProvider {
     client: reqwest::Client,
 }
 
+#[cfg(feature = "provider")]
 impl OpenAiCompatibleProvider {
     pub fn new(config: OpenAiCompatibleConfig) -> Self {
         let client = reqwest::Client::builder()
@@ -443,6 +445,7 @@ impl OpenAiCompatibleProvider {
     }
 }
 
+#[cfg(feature = "provider")]
 #[derive(Debug, Clone)]
 pub struct OpenAiCompatibleConfig {
     pub base_url: String,
@@ -452,6 +455,7 @@ pub struct OpenAiCompatibleConfig {
     pub request_timeout: Duration,
 }
 
+#[cfg(feature = "provider")]
 #[async_trait]
 impl LlmProvider for OpenAiCompatibleProvider {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
@@ -533,6 +537,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
     }
 }
 
+#[cfg(feature = "provider")]
 #[derive(Serialize)]
 struct ChatCompletionsRequestBody<'a> {
     model: &'a str,
@@ -544,18 +549,21 @@ struct ChatCompletionsRequestBody<'a> {
     stream: bool,
 }
 
+#[cfg(feature = "provider")]
 #[derive(Deserialize)]
 struct ChatCompletionsResponseBody {
     model: String,
     choices: Vec<ChatChoice>,
 }
 
+#[cfg(feature = "provider")]
 #[derive(Deserialize)]
 struct ChatChoice {
     message: ChatChoiceMessage,
     finish_reason: Option<String>,
 }
 
+#[cfg(feature = "provider")]
 #[derive(Deserialize)]
 struct ChatChoiceMessage {
     #[allow(dead_code)]
@@ -566,6 +574,7 @@ struct ChatChoiceMessage {
 /// Strip a known API key from a string before logging or surfacing.
 /// Defensive: callers shouldn't be sending the key into errors, but
 /// reqwest sometimes embeds it in URLs or hostnames.
+#[cfg(feature = "provider")]
 fn redact_key(s: String, key: Option<&str>) -> String {
     let Some(key) = key else { return s };
     if key.len() < 8 {
@@ -593,6 +602,7 @@ mod tests {
         assert!(matches!(err, LlmError::Disabled));
     }
 
+    #[cfg(feature = "provider")]
     #[test]
     fn redact_replaces_api_key_substring() {
         let key = "sk-this-is-a-secret-key";
@@ -602,6 +612,7 @@ mod tests {
         assert!(redacted.contains("<redacted>"));
     }
 
+    #[cfg(feature = "provider")]
     #[test]
     fn redact_leaves_short_keys_alone_to_avoid_collateral_damage() {
         // Very short keys (e.g., empty / corrupted) shouldn't trigger
@@ -610,6 +621,7 @@ mod tests {
         assert_eq!(redact_key(s.clone(), Some("gpt")), s);
     }
 
+    #[cfg(feature = "provider")]
     #[test]
     fn ollama_defaults_to_localhost_with_no_api_key() {
         let p = OpenAiCompatibleProvider::ollama("llama3.2");
@@ -618,6 +630,7 @@ mod tests {
         assert_eq!(p.model_name(), "llama3.2");
     }
 
+    #[cfg(feature = "provider")]
     #[test]
     fn lm_studio_defaults_to_localhost_with_no_api_key() {
         let p = OpenAiCompatibleProvider::lm_studio("local-model");
@@ -625,6 +638,7 @@ mod tests {
         assert!(p.api_key.is_none());
     }
 
+    #[cfg(feature = "provider")]
     #[test]
     fn capabilities_surface_context_window() {
         let p = OpenAiCompatibleProvider::ollama("llama3.2");

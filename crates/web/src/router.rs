@@ -201,16 +201,20 @@ pub fn app(config: WebServerConfig) -> Router {
         .route("/events", get(events))
         .with_state(state.clone());
 
-    let docs_router = Router::new()
-        .merge(
-            SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
-        )
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            middleware::require_bridge_auth,
-        ));
+    let router = Router::new().nest("/api/v1", v1);
 
-    let router = Router::new().nest("/api/v1", v1).merge(docs_router);
+    #[cfg(feature = "openapi")]
+    let router = router.merge(
+        Router::new()
+            .merge(
+                SwaggerUi::new("/api/v1/docs")
+                    .url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
+            )
+            .route_layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                middleware::require_bridge_auth,
+            )),
+    );
 
     #[cfg(feature = "web-ui")]
     let router = router.merge(spa::router());

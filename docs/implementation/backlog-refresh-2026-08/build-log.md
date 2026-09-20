@@ -15,7 +15,7 @@
 - Gmail provider thread lookup plus draft caching already preserves native threading; T3.2 is docs reconciliation, not a schema feature.
 - VIPs are still browser-local. The documented `useVips()` abstraction does not exist, so adapter preparation must precede any daemon migration.
 - `v1_launch_proof.sh` proves fake-provider behavior, not installation or real authentication.
-- `install.sh` installs `mxr` and `mxr-mailmerge`; release archives also contain `mxr-chime-player`. Clean-install verification must resolve whether this is intentional.
+- `install.sh` installs `mxr` and `mxr-mailmerge`; personal/release artifacts intentionally omit `mxr-chime-player`. Chime support remains an explicit opt-in build feature.
 - T3.3, T3.4, and Phase 4 remain evidence-gated; do not build them because they are easy.
 
 ### Existing work and deployment gate

@@ -796,6 +796,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
 /// Slice 2 — utoipa scaffold: spec is served at /api/v1/openapi.json
 /// behind bridge auth, is valid OpenAPI 3.1, and includes the metadata
 /// + bearer security scheme that downstream tooling needs to discover.
+#[cfg(feature = "openapi")]
 #[tokio::test]
 async fn openapi_spec_is_served_at_api_v1_path() {
     let temp = TempDir::new().unwrap();
@@ -853,6 +854,7 @@ async fn openapi_spec_is_served_at_api_v1_path() {
 
 /// Slice 2 — capture the served spec via insta snapshot so any future
 /// schema/route drift forces an explicit review (`cargo insta review`).
+#[cfg(feature = "openapi")]
 #[tokio::test]
 async fn openapi_spec_snapshot() {
     let temp = TempDir::new().unwrap();
@@ -899,6 +901,7 @@ async fn openapi_spec_snapshot() {
 
 /// Slice 2 — Swagger UI is served to authenticated local clients so
 /// users can explore the API interactively without leaving the daemon host.
+#[cfg(feature = "openapi")]
 #[tokio::test]
 async fn swagger_ui_is_served_at_api_v1_docs() {
     let temp = TempDir::new().unwrap();

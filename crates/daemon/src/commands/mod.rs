@@ -14,6 +14,7 @@ pub mod count;
 pub mod daemon;
 pub mod decisions;
 pub mod deliveries;
+#[cfg(feature = "demo")]
 pub mod demo;
 pub mod doctor;
 pub mod draft;

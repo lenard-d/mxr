@@ -43,7 +43,7 @@ validation:
     - cargo build -p mxr
     - scripts/cargo-test -p mxr --lib
     - scripts/cargo-test -p mxr --test activity_invariants
-    - scripts/cargo-test -p mxr --test cli_journey
+    - scripts/cargo-test -p mxr --features demo --test cli_journey
   success_criteria:
     - "IPC source identity has first-class Agent and MCP/Mcp variants, and activity logging preserves the origin without storing secrets/full bodies."
     - "Agents/MCP callers can be scoped by configured profile: safety policy, allowed accounts, and send/destructive capability."

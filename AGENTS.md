@@ -1,6 +1,6 @@
 # mxr Agent Context
 
-- `mxr` is Rust 2021. Use `scripts/cargo-test -p <crate> --tests` for focused tests and `cargo build -p mxr` before handoff.
+- `mxr` is Rust 2021. Keep local Cargo work CPU-safe with `CARGO_BUILD_JOBS=1` / `-j 1`. Use focused `cargo check -p <crate>` and `scripts/cargo-test -p <crate> --tests`; do not run local release, all-features, or full-workspace builds during normal iteration. The production release binary is built by `.github/workflows/build-vps.yml`.
 - Product shape: local-first, daemon-backed, CLI-first email. New capabilities must be daemon IPC plus CLI JSON/JSONL; TUI/web layer on the same daemon surface.
 - Mutations, destructive actions, and batch operations require a dry-run or preview path. The preview selection path must match the real mutation path.
 - Keep provider-specific logic inside provider crates. Daemon code talks to providers only through `MailSyncProvider` / `MailSendProvider`.

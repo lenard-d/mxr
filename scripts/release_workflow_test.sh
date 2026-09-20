@@ -3,13 +3,17 @@ set -euo pipefail
 
 workflow=".github/workflows/release.yml"
 
-live_gmail_block="$(sed -n '/name: Run live Gmail release smoke/,/cargo test -p mxr --test live_gmail_e2e/p' "$workflow")"
+live_gmail_block="$(sed -n '/name: Run live Gmail release smoke/,/cargo test -p mxr --features live-gmail --test live_gmail_e2e/p' "$workflow")"
 if ! grep -Fq 'skipping live provider smoke' <<<"$live_gmail_block"; then
     echo "Release workflow must skip live Gmail smoke when test credentials are missing." >&2
     exit 1
 fi
 if grep -Fq 'exit 1' <<<"$live_gmail_block"; then
     echo "Release workflow must not fail the release when live Gmail smoke credentials are missing." >&2
+    exit 1
+fi
+if ! grep -Fq 'cargo test -p mxr --features live-gmail --test live_gmail_e2e' <<<"$live_gmail_block"; then
+    echo "Release workflow must enable the live-gmail feature for the live Gmail test." >&2
     exit 1
 fi
 

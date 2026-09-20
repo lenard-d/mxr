@@ -223,7 +223,7 @@ Focused checks:
 
 ```bash
 scripts/cargo-test -p mxr --test cli_help
-scripts/cargo-test -p mxr --test cli_journey
+scripts/cargo-test -p mxr --features demo --test cli_journey
 scripts/cargo-test -p mxr --test daemon_lifecycle
 cargo test --workspace provider_offline_smoke_
 ```

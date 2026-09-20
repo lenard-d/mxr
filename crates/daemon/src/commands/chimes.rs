@@ -1,12 +1,34 @@
-use crate::cli::{ChimeEventArg, ChimeSoundArg, ChimesAction, OutputFormat};
+#[cfg(any(feature = "chimes", test))]
+use crate::cli::{ChimeEventArg, ChimeSoundArg};
+use crate::cli::{ChimesAction, OutputFormat};
+#[cfg(any(feature = "chimes", test))]
 use crate::ipc_client::IpcClient;
+#[cfg(feature = "chimes")]
 use crate::output::resolve_format;
+#[cfg(any(feature = "chimes", test))]
 use mxr_protocol::{
     NotificationChimeEventData, NotificationChimeSoundData, NotificationChimesData, Request,
     Response, ResponseData,
 };
 
 pub async fn run(action: Option<ChimesAction>, format: Option<OutputFormat>) -> anyhow::Result<()> {
+    #[cfg(not(feature = "chimes"))]
+    {
+        let _ = (action, format);
+        anyhow::bail!(
+            "Chime support is not enabled in this build; rebuild with `--features chimes`"
+        );
+    }
+
+    #[cfg(feature = "chimes")]
+    run_enabled(action, format).await
+}
+
+#[cfg(feature = "chimes")]
+async fn run_enabled(
+    action: Option<ChimesAction>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let action = action.unwrap_or(ChimesAction::Status);
     let fmt = resolve_format(format);
     let mut client = IpcClient::connect().await?;
@@ -57,6 +79,7 @@ pub async fn run(action: Option<ChimesAction>, format: Option<OutputFormat>) -> 
     Ok(())
 }
 
+#[cfg(any(feature = "chimes", test))]
 async fn fetch_chimes(client: &mut IpcClient) -> anyhow::Result<NotificationChimesData> {
     let response = client.request(Request::GetNotificationChimes).await?;
     crate::commands::expect_response(response, |r| match r {
@@ -67,6 +90,7 @@ async fn fetch_chimes(client: &mut IpcClient) -> anyhow::Result<NotificationChim
     })
 }
 
+#[cfg(any(feature = "chimes", test))]
 async fn update_chimes(
     client: &mut IpcClient,
     config: NotificationChimesData,
@@ -84,6 +108,7 @@ async fn update_chimes(
     })
 }
 
+#[cfg(any(feature = "chimes", test))]
 fn render_chimes(config: &NotificationChimesData, format: OutputFormat) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => serde_json::to_string_pretty(config)?,
@@ -105,6 +130,7 @@ fn render_chimes(config: &NotificationChimesData, format: OutputFormat) -> anyho
     })
 }
 
+#[cfg(any(feature = "chimes", test))]
 fn render_preview(
     event: NotificationChimeEventData,
     sound: NotificationChimeSoundData,
@@ -131,6 +157,7 @@ fn render_preview(
     })
 }
 
+#[cfg(any(feature = "chimes", test))]
 fn set_event_sound(
     config: &mut NotificationChimesData,
     event: NotificationChimeEventData,
@@ -149,6 +176,7 @@ fn set_event_sound(
     }
 }
 
+#[cfg(any(feature = "chimes", test))]
 fn event_label(event: NotificationChimeEventData) -> &'static str {
     match event {
         NotificationChimeEventData::NewMail => "new_mail",
@@ -163,6 +191,7 @@ fn event_label(event: NotificationChimeEventData) -> &'static str {
     }
 }
 
+#[cfg(any(feature = "chimes", test))]
 fn sound_label(sound: NotificationChimeSoundData) -> &'static str {
     match sound {
         NotificationChimeSoundData::None => "none",
@@ -176,6 +205,7 @@ fn sound_label(sound: NotificationChimeSoundData) -> &'static str {
     }
 }
 
+#[cfg(any(feature = "chimes", test))]
 fn event_arg(value: ChimeEventArg) -> NotificationChimeEventData {
     match value {
         ChimeEventArg::NewMail => NotificationChimeEventData::NewMail,
@@ -190,6 +220,7 @@ fn event_arg(value: ChimeEventArg) -> NotificationChimeEventData {
     }
 }
 
+#[cfg(any(feature = "chimes", test))]
 fn sound_arg(value: ChimeSoundArg) -> NotificationChimeSoundData {
     match value {
         ChimeSoundArg::None => NotificationChimeSoundData::None,

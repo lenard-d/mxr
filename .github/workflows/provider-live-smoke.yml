@@ -17,7 +17,7 @@ jobs:
         run: cargo test --workspace provider_offline_smoke_ -- --nocapture
       - name: Run v1 launch proof (fake provider, daemon, CLI, MCP)
         run: |
-          cargo build -p mxr
+          cargo build -p mxr --features demo,mcp
           bash scripts/v1_launch_proof.sh
       - name: Record live provider credential evidence
         run: bash scripts/live_provider_smoke_evidence.sh
@@ -48,4 +48,4 @@ jobs:
             exit 1
           fi
       - name: Run live Gmail end-to-end smoke
-        run: cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
+        run: cargo test -p mxr --features live-gmail --test live_gmail_e2e -- --ignored --nocapture

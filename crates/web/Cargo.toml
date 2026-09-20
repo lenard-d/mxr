@@ -18,14 +18,21 @@ default = []
 # bridge serves the web SPA at `/`. Build the SPA first (`npm run build` in
 # apps/web) before invoking `cargo build --features web-ui`.
 web-ui = ["dep:include_dir", "dep:mime_guess"]
+openapi = [
+    "dep:utoipa",
+    "dep:utoipa-axum",
+    "dep:utoipa-swagger-ui",
+    "mxr-core/openapi",
+    "mxr-protocol/openapi",
+]
 
 [dependencies]
 mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
-mxr-core = { workspace = true, features = ["openapi"] }
+mxr-core = { workspace = true }
 mxr-mail-parse = { workspace = true }
-mxr-protocol = { workspace = true, features = ["openapi"] }
+mxr-protocol = { workspace = true }
 axum = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
@@ -38,9 +45,9 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
-utoipa = { workspace = true }
-utoipa-axum = { workspace = true }
-utoipa-swagger-ui = { workspace = true }
+utoipa = { workspace = true, optional = true }
+utoipa-axum = { workspace = true, optional = true }
+utoipa-swagger-ui = { workspace = true, optional = true }
 uuid = { workspace = true }
 include_dir = { version = "0.7", optional = true }
 mime_guess = { workspace = true, optional = true }

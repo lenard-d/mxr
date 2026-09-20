@@ -42,29 +42,45 @@ pub(super) async fn start_auth_session(
             client_id,
             token_ref,
         }) => {
-            start_outlook_auth_session(
-                state,
-                account,
-                reauthorize,
-                client_id,
-                token_ref,
-                mxr_provider_outlook::OutlookTenant::Personal,
-            )
-            .await
+            #[cfg(feature = "outlook")]
+            {
+                start_outlook_auth_session(
+                    state,
+                    account,
+                    reauthorize,
+                    client_id,
+                    token_ref,
+                    mxr_provider_outlook::OutlookTenant::Personal,
+                )
+                .await
+            }
+            #[cfg(not(feature = "outlook"))]
+            {
+                let _ = (client_id, token_ref);
+                Err("Outlook auth sessions are unavailable in this build; rebuild with `--features outlook`".into())
+            }
         }
         Some(AccountSyncConfigData::OutlookWork {
             client_id,
             token_ref,
         }) => {
-            start_outlook_auth_session(
-                state,
-                account,
-                reauthorize,
-                client_id,
-                token_ref,
-                mxr_provider_outlook::OutlookTenant::Work,
-            )
-            .await
+            #[cfg(feature = "outlook")]
+            {
+                start_outlook_auth_session(
+                    state,
+                    account,
+                    reauthorize,
+                    client_id,
+                    token_ref,
+                    mxr_provider_outlook::OutlookTenant::Work,
+                )
+                .await
+            }
+            #[cfg(not(feature = "outlook"))]
+            {
+                let _ = (client_id, token_ref);
+                Err("Outlook auth sessions are unavailable in this build; rebuild with `--features outlook`".into())
+            }
         }
         _ => Err("auth sessions are only available for Gmail and Outlook accounts".into()),
     }
@@ -186,6 +202,7 @@ async fn start_gmail_auth_session(request: GmailAuthSessionRequest<'_>) -> Handl
     Ok(ResponseData::AuthSession { session })
 }
 
+#[cfg(feature = "outlook")]
 async fn start_outlook_auth_session(
     state: &Arc<AppState>,
     account: AccountConfigData,

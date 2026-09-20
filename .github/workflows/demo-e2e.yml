@@ -18,7 +18,7 @@ on:
         default: "900"
         required: true
       features:
-        description: Cargo features for the mxr binary (the release ships semantic-local,web-ui)
+        description: Additional Cargo features for the mxr binary (demo is always enabled)
         default: "semantic-local"
         required: true
 
@@ -33,7 +33,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - name: Build mxr (release)
-        run: cargo build --release -p mxr --features "${{ inputs.features }}"
+        run: cargo build --release -p mxr --features "demo,${{ inputs.features }}"
       - name: Run the demo end to end
         env:
           MESSAGES: ${{ inputs.messages }}

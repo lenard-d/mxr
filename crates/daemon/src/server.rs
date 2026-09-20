@@ -82,7 +82,10 @@ pub async fn run_stdio() -> anyhow::Result<()> {
                  Stop it first, or connect to it with `mxr daemon dial-stdio`.\nOriginal error: {error}"
             );
         }
-        Err(error) => return Err(error),
+        Err(error) => {
+            tracing::error!(error = %error, "daemon startup failed");
+            return Err(error);
+        }
     });
 
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
@@ -147,7 +150,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                 sock_path.display()
             );
         }
-        Err(error) => return Err(error),
+        Err(error) => {
+            tracing::error!(error = %error, "daemon startup failed");
+            return Err(error);
+        }
     });
 
     // We hold the exclusive lock, so we are the sole daemon. Build the

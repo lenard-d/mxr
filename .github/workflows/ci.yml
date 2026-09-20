@@ -235,6 +235,8 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo nextest run --workspace
+      - name: Test (demo-gated CLI journeys)
+        run: cargo nextest run -p mxr --features demo --test cli_journey --test demo_cli
 
   test-semantic:
     name: Test (semantic-local)
@@ -441,4 +443,3 @@ jobs:
       - run: cargo install --path . --locked --root "$RUNNER_TEMP/mxr-install"
       - run: |
           "$RUNNER_TEMP/mxr-install/bin/mxr" version
-          test -x "$RUNNER_TEMP/mxr-install/bin/mxr-chime-player"

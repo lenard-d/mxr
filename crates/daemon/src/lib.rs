@@ -29,8 +29,12 @@ pub mod state;
 pub(crate) mod test_fixtures;
 pub mod unsubscribe;
 
+#[cfg(not(feature = "tui"))]
+use clap::CommandFactory;
 use clap::Parser;
-use cli::{unsupported_command_guidance, Cli, Command, DaemonAction, DemoAction};
+#[cfg(feature = "demo")]
+use cli::DemoAction;
+use cli::{unsupported_command_guidance, Cli, Command, DaemonAction};
 
 pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     if let Some(guidance) = unsupported_command_guidance(&args) {
@@ -38,36 +42,42 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     }
     let cli = Cli::parse_from(&args);
 
-    // Sticky demo: when `mxr demo` has been started in a prior invocation,
-    // it leaves an active-marker behind so every subsequent CLI command
-    // operates on the demo profile until `mxr demo stop`. Apply demo env
-    // vars up front for any non-Demo command so the rest of dispatch sees
-    // the demo paths transparently.
-    //
-    // The Demo command handles its own env setup below (Start re-seeds with
-    // the requested message count; Stop/Status/Reset call apply_active_environment
-    // themselves so they target the demo daemon, not the real one).
-    let is_demo_command = matches!(cli.command, Some(Command::Demo { .. }));
-    if !is_demo_command {
-        commands::demo::apply_active_environment()?;
-    }
+    #[cfg(not(feature = "demo"))]
+    warn_about_stale_demo_marker();
 
-    if let Some(Command::Demo {
-        action,
-        reset,
-        messages,
-        ..
-    }) = &cli.command
+    #[cfg(feature = "demo")]
     {
-        // Stop/Status/Reset must run inside the demo env so they target the
-        // demo profile rather than the user's real one. Start re-applies env
-        // anyway via demo::run.
-        if action.is_some() {
+        // Sticky demo: when `mxr demo` has been started in a prior invocation,
+        // it leaves an active-marker behind so every subsequent CLI command
+        // operates on the demo profile until `mxr demo stop`. Apply demo env
+        // vars up front for any non-Demo command so the rest of dispatch sees
+        // the demo paths transparently.
+        //
+        // The Demo command handles its own env setup below (Start re-seeds with
+        // the requested message count; Stop/Status/Reset call apply_active_environment
+        // themselves so they target the demo daemon, not the real one).
+        let is_demo_command = matches!(cli.command, Some(Command::Demo { .. }));
+        if !is_demo_command {
             commands::demo::apply_active_environment()?;
-        } else {
-            commands::demo::prepare_environment(*messages)?;
-            if *reset {
-                commands::demo::reset_profile().await?;
+        }
+
+        if let Some(Command::Demo {
+            action,
+            reset,
+            messages,
+            ..
+        }) = &cli.command
+        {
+            // Stop/Status/Reset must run inside the demo env so they target the
+            // demo profile rather than the user's real one. Start re-applies env
+            // anyway via demo::run.
+            if action.is_some() {
+                commands::demo::apply_active_environment()?;
+            } else {
+                commands::demo::prepare_environment(*messages)?;
+                if *reset {
+                    commands::demo::reset_profile().await?;
+                }
             }
         }
     }
@@ -122,7 +132,16 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::restart_daemon().await?;
         }
         Some(Command::Mcp { action }) => match action {
-            cli::McpCommand::Serve => mxr_mcp::serve_stdio().await?,
+            cli::McpCommand::Serve => {
+                #[cfg(feature = "mcp")]
+                mxr_mcp::serve_stdio().await?;
+                #[cfg(not(feature = "mcp"))]
+                {
+                    anyhow::bail!(
+                        "MCP support is not enabled in this build; rebuild with `--features mcp`"
+                    );
+                }
+            }
         },
 
         Some(Command::Version) => {
@@ -537,15 +556,25 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             messages,
             no_tui,
             ..
-        }) => match action {
-            None => commands::demo::run(messages, no_tui).await?,
-            Some(DemoAction::Stop) => commands::demo::stop().await?,
-            Some(DemoAction::Status) => commands::demo::status()?,
-            Some(DemoAction::Reset) => {
-                commands::demo::reset_profile().await?;
-                println!("Demo profile wiped. Run `mxr demo` to re-seed.");
+        }) => {
+            #[cfg(feature = "demo")]
+            match action {
+                None => commands::demo::run(messages, no_tui).await?,
+                Some(DemoAction::Stop) => commands::demo::stop().await?,
+                Some(DemoAction::Status) => commands::demo::status()?,
+                Some(DemoAction::Reset) => {
+                    commands::demo::reset_profile().await?;
+                    println!("Demo profile wiped. Run `mxr demo` to re-seed.");
+                }
             }
-        },
+            #[cfg(not(feature = "demo"))]
+            {
+                let _ = (action, messages, no_tui);
+                anyhow::bail!(
+                    "Demo support is not enabled in this build; rebuild with `--features demo`"
+                );
+            }
+        }
         Some(Command::Summarize {
             thread_id,
             search,
@@ -621,8 +650,18 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::llm::run(action, format).await?;
         }
         Some(Command::Chimes { action, format }) => {
-            crate::server::ensure_daemon_running().await?;
-            commands::chimes::run(action, format).await?;
+            #[cfg(feature = "chimes")]
+            {
+                crate::server::ensure_daemon_running().await?;
+                commands::chimes::run(action, format).await?;
+            }
+            #[cfg(not(feature = "chimes"))]
+            {
+                let _ = (action, format);
+                anyhow::bail!(
+                    "Chime support is not enabled in this build; rebuild with `--features chimes`"
+                );
+            }
         }
         Some(Command::Subscriptions {
             limit,
@@ -1409,13 +1448,38 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         }
 
         None => {
-            crate::server::ensure_daemon_running().await?;
-            crate::server::ensure_daemon_supports_tui().await?;
-            mxr_tui::run().await?;
+            #[cfg(feature = "tui")]
+            {
+                crate::server::ensure_daemon_running().await?;
+                crate::server::ensure_daemon_supports_tui().await?;
+                mxr_tui::run().await?;
+            }
+            #[cfg(not(feature = "tui"))]
+            {
+                println!(
+                    "TUI support is not enabled in this build. Use a CLI command or `mxr --help`."
+                );
+                Cli::command().print_help()?;
+                println!();
+            }
         }
     }
 
     Ok(())
+}
+
+#[cfg(not(feature = "demo"))]
+fn warn_about_stale_demo_marker() {
+    let marker = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("mxr")
+        .join("demo-active");
+    if marker.exists() {
+        eprintln!(
+            "Warning: found demo-active marker at {}; this build has no demo support, so demo mode is ignored. Rebuild with `--features demo` or remove the marker.",
+            marker.display()
+        );
+    }
 }
 
 pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {

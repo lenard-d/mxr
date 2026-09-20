@@ -40,7 +40,7 @@ validation:
     - cargo build -p mxr
     - scripts/cargo-test -p mxr-provider-imap --tests
     - scripts/cargo-test -p mxr-sync --tests
-    - scripts/cargo-test -p mxr --test cli_journey
+    - scripts/cargo-test -p mxr --features demo --test cli_journey
   success_criteria:
     - "IMAP servers advertising X-GM-EXT-1 use a Gmail-specific sync path that includes archived-only mail."
     - "Gmail-over-IMAP does not duplicate rows by syncing the same logical Gmail message through multiple folders."

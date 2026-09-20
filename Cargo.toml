@@ -38,6 +38,7 @@ path = "crates/daemon/src/main.rs"
 [[bin]]
 name = "mxr-chime-player"
 path = "crates/daemon/src/bin/chime_player.rs"
+required-features = ["chimes"]
 
 [[test]]
 name = "cli_help"
@@ -66,14 +67,17 @@ path = "crates/daemon/tests/accounts_repair_cli.rs"
 [[test]]
 name = "cli_journey"
 path = "crates/daemon/tests/cli_journey.rs"
+required-features = ["demo"]
 
 [[test]]
 name = "demo_cli"
 path = "crates/daemon/tests/demo_cli.rs"
+required-features = ["demo"]
 
 [[test]]
 name = "live_gmail_e2e"
 path = "crates/daemon/tests/live_gmail_e2e.rs"
+required-features = ["live-gmail"]
 
 [[test]]
 name = "compose_check_cli"
@@ -98,9 +102,20 @@ path = "crates/daemon/tests/activity_invariants.rs"
 [features]
 # Default profile is intentionally minimal so CLI iteration is fast (~1m vs ~6m).
 # Activate the full local-semantic stack with `--features semantic-local`.
-default = []
-semantic-local = ["local"]
-local = ["mxr-semantic/local"]
+default = ["personal"]
+personal = ["web-ui"]
+ai = ["mxr-llm/provider"]
+semantic = []
+semantic-local = ["semantic", "local"]
+local = ["semantic", "mxr-semantic/local"]
+# Optional integrations kept out of the personal binary unless explicitly requested.
+outlook = ["dep:mxr-provider-outlook"]
+demo = ["dep:mxr-provider-fake"]
+tui = ["dep:mxr-tui"]
+mcp = ["dep:mxr-mcp"]
+chimes = ["dep:rodio"]
+openapi = ["mxr-web/openapi"]
+live-gmail = []
 # Embed the web SPA into the binary so `mxr web` serves it from the bridge.
 # Build the SPA first: `cd apps/web && npm install && npm run build`.
 web-ui = ["mxr-web/web-ui"]
@@ -356,13 +371,13 @@ mxr-keychain = { workspace = true }
 mxr-humanizer = { workspace = true }
 mxr-llm = { workspace = true }
 mxr-mail-parse = { workspace = true }
-mxr-mcp = { workspace = true }
+mxr-mcp = { workspace = true, optional = true }
 mxr-outbound = { workspace = true }
 mxr-protocol = { workspace = true }
-mxr-provider-fake = { workspace = true }
+mxr-provider-fake = { workspace = true, optional = true }
 mxr-provider-gmail = { workspace = true }
 mxr-provider-imap = { workspace = true }
-mxr-provider-outlook = { workspace = true }
+mxr-provider-outlook = { workspace = true, optional = true }
 mxr-provider-smtp = { workspace = true }
 mxr-reader = { workspace = true }
 mxr-relationship = { workspace = true }
@@ -373,7 +388,7 @@ mxr-semantic = { workspace = true }
 mxr-store = { workspace = true }
 mxr-sync = { workspace = true }
 mxr-transport = { workspace = true }
-mxr-tui = { workspace = true }
+mxr-tui = { workspace = true, optional = true }
 mxr-web = { workspace = true }
 
 anyhow = { workspace = true }
@@ -389,7 +404,6 @@ clap = { workspace = true }
 clap_complete = { workspace = true }
 constant_time_eq = { workspace = true }
 comrak = { workspace = true, default-features = false, features = ["shortcodes"] }
-crossterm = { workspace = true, features = ["event-stream"] }
 csv = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
@@ -399,13 +413,10 @@ htmlescape = { workspace = true }
 keyring = { workspace = true }
 lettre = { workspace = true }
 mail-parser = { workspace = true }
-nucleo = { workspace = true }
 once_cell = { workspace = true }
-ratatui = { workspace = true }
-ratatui-image = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
-rodio = { workspace = true }
+rodio = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
@@ -415,7 +426,6 @@ base16ct = { workspace = true }
 sqlx = { workspace = true }
 tantivy = { workspace = true }
 thiserror = { workspace = true }
-throbber-widgets-tui = "0.11.0"
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 toml = { workspace = true }
@@ -423,8 +433,6 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
-unicode-width = { workspace = true }
 url = { workspace = true }
 open = { workspace = true }
 uuid = { workspace = true }
@@ -434,7 +442,6 @@ mime_guess = { workspace = true }
 which = { workspace = true }
 yup-oauth2 = { workspace = true }
 parking_lot = { workspace = true }
-image = { workspace = true }
 nix = { version = "0.30", features = ["signal", "process"] }
 inquire = "0.9.4"
 
@@ -442,6 +449,7 @@ inquire = "0.9.4"
 assert_cmd = { workspace = true }
 criterion = "0.5"
 insta = { workspace = true }
+mxr-provider-fake = { workspace = true }
 mxr-test-support = { workspace = true }
 # Enables the in-memory MemoryTransport for the IPC conformance corpus. The
 # runtime dependency above stays feature-light; this feature is on only for
@@ -472,10 +480,12 @@ harness = false
 [[bench]]
 name = "sync_overlap"
 harness = false
+required-features = ["demo"]
 
 [[bench]]
 name = "semantic_ingest"
 harness = false
+required-features = ["semantic-local"]
 
 [[bench]]
 name = "daemon_burst"
@@ -493,6 +503,15 @@ harness = false
 # `test` profile inherits these from `dev`, so this covers both.
 [profile.dev]
 debug = "line-tables-only"
+
+# Personal production builds favor short compile/link times over the last few
+# percent of runtime throughput. GitHub Actions caches the incremental state.
+[profile.release]
+codegen-units = 256
+debug = 0
+incremental = true
+lto = false
+strip = "symbols"
 
 [lints]
 workspace = true

@@ -836,20 +836,34 @@ async fn remove_account(
     run_account_operation(remove_account_request(name, purge_local_data, false)).await
 }
 
+#[cfg(not(feature = "outlook"))]
+async fn add_outlook() -> anyhow::Result<()> {
+    anyhow::bail!("Outlook support is not enabled in this build; rebuild with `--features outlook`")
+}
+
+#[cfg(feature = "outlook")]
 async fn add_outlook() -> anyhow::Result<()> {
     add_outlook_inner(OutlookAccountKind::Personal).await
 }
 
+#[cfg(not(feature = "outlook"))]
+async fn add_outlook_work() -> anyhow::Result<()> {
+    anyhow::bail!("Outlook support is not enabled in this build; rebuild with `--features outlook`")
+}
+
+#[cfg(feature = "outlook")]
 async fn add_outlook_work() -> anyhow::Result<()> {
     add_outlook_inner(OutlookAccountKind::Work).await
 }
 
+#[cfg(feature = "outlook")]
 #[derive(Clone, Copy)]
 enum OutlookAccountKind {
     Personal,
     Work,
 }
 
+#[cfg(feature = "outlook")]
 async fn add_outlook_inner(kind: OutlookAccountKind) -> anyhow::Result<()> {
     let label = match kind {
         OutlookAccountKind::Personal => "Outlook (Personal)",

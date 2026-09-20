@@ -46,9 +46,9 @@ validation:
     - bash scripts/release_version_gate_test.sh
     - bash scripts/release_gmail_oauth_gate_test.sh
     - bash scripts/provider_smoke_workflow_test.sh
-    - cargo build -p mxr
-    - scripts/cargo-test -p mxr --test cli_journey
-    - scripts/cargo-test -p mxr --test live_gmail_e2e
+    - cargo build -p mxr --features demo,mcp
+    - scripts/cargo-test -p mxr --features demo --test cli_journey
+    - scripts/cargo-test -p mxr --features live-gmail --test live_gmail_e2e
   success_criteria:
     - "A deterministic v1 launch smoke proves install/binary invocation, configure fake account, daemon start, sync, search, read, draft, approve/gated send path, agent policy enforcement, and MCP tool invocation."
     - "Agent policy enforcement must be proven by a real daemon IPC request tagged `source=agent`, not just by unit tests or config presence. The proof must show an allowed agent read/draft-only path and a blocked agent send/destructive path."

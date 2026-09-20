@@ -73,14 +73,14 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - name: Run release-blocking CLI tests
         if: needs.plan.outputs.cli_changed == 'true'
-        run: cargo nextest run -p mxr --test cli_journey --test daemon_lifecycle --test reset_cli --test cli_help
+        run: cargo nextest run -p mxr --features demo --test cli_journey --test daemon_lifecycle --test reset_cli --test cli_help
       - name: Run deterministic provider smoke suite
         if: needs.plan.outputs.cli_changed == 'true'
         run: cargo test --workspace provider_offline_smoke_ -- --nocapture
       - name: Run v1 launch proof (fake provider, daemon, CLI, MCP)
         if: needs.plan.outputs.cli_changed == 'true'
         run: |
-          cargo build -p mxr
+          cargo build -p mxr --features demo,mcp
           bash scripts/v1_launch_proof.sh
       - name: Record live provider credential evidence
         if: needs.plan.outputs.cli_changed == 'true'
@@ -94,7 +94,7 @@ jobs:
             echo "::warning ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; skipping live provider smoke."
             exit 0
           fi
-          cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
+          cargo test -p mxr --features live-gmail --test live_gmail_e2e -- --ignored --nocapture
       - name: Skip CLI smoke
         if: needs.plan.outputs.cli_changed != 'true'
         run: echo "CLI artifacts unchanged; skipping CLI smoke."
@@ -227,7 +227,6 @@ jobs:
           fi
           for BINARY in \
             "target/${MATRIX_TARGET}/release/mxr" \
-            "target/${MATRIX_TARGET}/release/mxr-chime-player" \
             "target/${MATRIX_TARGET}/release/mxr-mailmerge"
           do
             codesign --force --options runtime --timestamp \
@@ -246,7 +245,6 @@ jobs:
           ARCHIVE="mxr-v${VERSION}-${MATRIX_ARCHIVE}"
           mkdir -p release
           cp "target/${MATRIX_TARGET}/release/mxr" release/
-          cp "target/${MATRIX_TARGET}/release/mxr-chime-player" release/
           cp "target/${MATRIX_TARGET}/release/mxr-mailmerge" release/
           cp LICENSE-MIT LICENSE-APACHE README.md release/
           cd release && tar czf "../${ARCHIVE}" ./* && cd ..
@@ -272,7 +270,6 @@ jobs:
           NOTARIZE_ZIP="$RUNNER_TEMP/mxr-notarize.zip"
           mkdir -p "$NOTARIZE_DIR"
           cp "target/${MATRIX_TARGET}/release/mxr" "$NOTARIZE_DIR/"
-          cp "target/${MATRIX_TARGET}/release/mxr-chime-player" "$NOTARIZE_DIR/"
           cp "target/${MATRIX_TARGET}/release/mxr-mailmerge" "$NOTARIZE_DIR/"
           ditto -c -k "$NOTARIZE_DIR" "$NOTARIZE_ZIP"
           xcrun notarytool submit "$NOTARIZE_ZIP" \

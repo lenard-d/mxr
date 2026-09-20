@@ -9,7 +9,8 @@ use super::status_helpers::{
     feature_health_report, search_worker_failed, StatusSnapshotFields,
 };
 use super::{
-    handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerResult,
+    handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerError,
+    HandlerResult,
 };
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -827,6 +828,7 @@ pub(crate) async fn semantic_status(state: &AppState) -> HandlerResult {
 
 pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
     let config = state.config_snapshot().llm;
+    let enabled = cfg!(feature = "ai") && config.enabled;
     let capabilities = state.llm.capabilities();
     let api_key_env = (!config.api_key_env.is_empty()).then_some(config.api_key_env.clone());
     let api_key_present = api_key_env
@@ -834,15 +836,15 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
         .and_then(|name| std::env::var(name).ok())
         .is_some_and(|value| !value.is_empty());
     let snapshot = mxr_protocol::LlmStatusSnapshot {
-        enabled: config.enabled,
-        provider: if config.enabled {
+        enabled,
+        provider: if enabled {
             "openai_compatible".to_string()
         } else {
             "noop".to_string()
         },
         model: state.llm.model_name(),
         configured_model: config.model,
-        base_url: config.enabled.then_some(config.base_url),
+        base_url: enabled.then_some(config.base_url),
         api_key_env,
         api_key_present,
         context_window: capabilities.context_window,
@@ -859,6 +861,10 @@ pub(crate) async fn llm_config(state: &AppState) -> HandlerResult {
 }
 
 pub(crate) async fn update_llm_config(state: &AppState, config: LlmConfigData) -> HandlerResult {
+    #[cfg(not(feature = "ai"))]
+    if config.enabled {
+        return Err("AI support is not enabled in this build; rebuild with `--features ai`".into());
+    }
     let config = normalize_llm_config(config, &state.config_snapshot().llm)?;
     let saved = state
         .mutate_config(|current| {
@@ -1021,6 +1027,13 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
 }
 
 pub(crate) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {
+    #[cfg(not(feature = "semantic"))]
+    if enabled {
+        return Err(
+            "Semantic search is not enabled in this build; rebuild with `--features semantic`"
+                .into(),
+        );
+    }
     state
         .mutate_config(|config| {
             config.search.semantic.enabled = enabled;
@@ -1035,10 +1048,22 @@ pub(crate) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerR
     semantic_status(state).await
 }
 
+fn require_semantic_build() -> Result<(), HandlerError> {
+    if cfg!(feature = "semantic") {
+        Ok(())
+    } else {
+        Err(
+            "Semantic search is not enabled in this build; rebuild with `--features semantic-local`"
+                .into(),
+        )
+    }
+}
+
 pub(crate) async fn install_semantic_profile(
     state: &AppState,
     profile: SemanticProfile,
 ) -> HandlerResult {
+    require_semantic_build()?;
     state
         .semantic
         .install_profile(profile)
@@ -1051,6 +1076,7 @@ pub(crate) async fn use_semantic_profile(
     state: &AppState,
     profile: SemanticProfile,
 ) -> HandlerResult {
+    require_semantic_build()?;
     state
         .mutate_config(|config| {
             config.search.semantic.enabled = true;
@@ -1064,6 +1090,7 @@ pub(crate) async fn use_semantic_profile(
 }
 
 pub(crate) async fn reindex_semantic(state: &AppState, force: bool) -> HandlerResult {
+    require_semantic_build()?;
     state
         .semantic
         .reindex(force)
@@ -1073,6 +1100,7 @@ pub(crate) async fn reindex_semantic(state: &AppState, force: bool) -> HandlerRe
 }
 
 pub(crate) async fn backfill_semantic(state: &AppState) -> HandlerResult {
+    require_semantic_build()?;
     state
         .semantic
         .backfill_active()

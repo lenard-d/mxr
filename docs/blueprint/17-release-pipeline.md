@@ -13,6 +13,23 @@ The checked-in workflow is [.github/workflows/ci.yml](../../.github/workflows/ci
 It uses change detection so docs-only, web-only, and Rust-heavy changes do not
 pay the same CI cost. `workflow_dispatch` marks every lane as changed.
 
+### Personal VPS build and deploy
+
+Pushes to `lenard/mail-workspace` run
+[build-vps.yml](../../.github/workflows/build-vps.yml). It builds exactly one
+Linux `mxr` binary with the `personal` feature profile and uploads a checksummed
+artifact. The VPS deploy is intentionally host-driven, so GitHub needs no SSH
+or server credentials:
+
+```bash
+scripts/deploy-personal-vps.sh
+```
+
+The script downloads the newest successful branch artifact, verifies its
+checksum, atomically replaces `/home/lenard/apps/mxr/current/mxr`, restarts the
+existing `mxr.service`, and requires `https://mail.lenard-duenkel.com/` to return
+success. It creates no second service, staging deployment, or rollback copy.
+
 Always-on checks:
 
 - secret scan over checked-in files and Git history
@@ -214,7 +231,6 @@ mxr-v0.1.0-macos-aarch64.tar.gz
 
 Each archive contains:
 - `mxr` binary
-- `mxr-chime-player` helper binary
 - `LICENSE-MIT`
 - `LICENSE-APACHE`
 - `README.md`
@@ -271,7 +287,6 @@ jobs:
           ARCHIVE="mxr-v${VERSION}-${{ matrix.archive }}"
           mkdir -p release
           cp target/${{ matrix.target }}/release/mxr release/
-          cp target/${{ matrix.target }}/release/mxr-chime-player release/
           cp LICENSE-MIT LICENSE-APACHE README.md release/
           cd release
           tar czf "../${ARCHIVE}" *
@@ -465,7 +480,6 @@ class Mxr < Formula
 
   def install
     bin.install "mxr"
-    bin.install "mxr-chime-player"
     prefix.install "LICENSE-MIT"
     prefix.install "LICENSE-APACHE"
     prefix.install "README.md"

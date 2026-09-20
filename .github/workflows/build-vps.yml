@@ -35,22 +35,23 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev libasound2-dev libdbus-1-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev libdbus-1-dev pkg-config
 
       - name: Build web app
         working-directory: apps/web
         run: npm ci && npm run build
 
       - name: Build MXR
-        env:
-          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
-        run: cargo build --release --locked --target x86_64-unknown-linux-gnu -p mxr --features web-ui
+        run: cargo build --release --locked --target x86_64-unknown-linux-gnu -p mxr --no-default-features --features personal
 
       - name: Package binary
         run: |
           mkdir -p dist
           cp target-cli/x86_64-unknown-linux-gnu/release/mxr dist/mxr
           sha256sum dist/mxr > dist/mxr.sha256
+
+      - name: Smoke binary
+        run: dist/mxr --version
 
       - uses: actions/upload-artifact@v7
         with:

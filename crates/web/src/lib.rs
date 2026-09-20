@@ -11,12 +11,14 @@ mod chrome;
 mod envelope_list;
 mod legacy;
 mod middleware;
+#[cfg(feature = "openapi")]
 mod openapi;
 mod request_types;
 mod routes_v6;
 #[cfg(feature = "web-ui")]
 mod spa;
 
+#[cfg(feature = "openapi")]
 pub use openapi::ApiDoc;
 
 use axum::{
@@ -63,7 +65,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::net::TcpListener;
+#[cfg(feature = "openapi")]
 use utoipa::OpenApi;
+#[cfg(feature = "openapi")]
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 

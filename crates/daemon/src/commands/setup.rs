@@ -3,6 +3,7 @@
 
 use crate::cli::AccountsAction;
 use inquire::{Confirm, CustomType, Password, PasswordDisplayMode, Select, Text};
+#[cfg(feature = "demo")]
 use mxr_config::{AccountConfig, SyncProviderConfig};
 use std::io::IsTerminal;
 
@@ -16,52 +17,61 @@ pub async fn run(demo: bool, key: String, force: bool) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let config_path = mxr_config::config_file_path();
-    let mut config = mxr_config::load_config_from_path(&config_path).unwrap_or_default();
-
-    if config.accounts.contains_key(&key) && !force {
-        anyhow::bail!(
-            "An account with key `{key}` already exists in {}. Pass --force to overwrite.",
-            config_path.display()
-        );
-    }
-
-    let account = AccountConfig {
-        name: "Demo".into(),
-        email: "demo@example.com".into(),
-        enabled: true,
-        sync: Some(SyncProviderConfig::Fake),
-        send: None,
-    };
-    config.accounts.insert(key.clone(), account);
-
-    // Make sure the demo account is the default if no default is set —
-    // saves the user a step.
-    if config
-        .general
-        .default_account
-        .as_deref()
-        .is_none_or(str::is_empty)
+    #[cfg(not(feature = "demo"))]
     {
-        config.general.default_account = Some(key.clone());
+        let _ = (key, force);
+        anyhow::bail!("Demo setup is not enabled in this build; rebuild with `--features demo`");
     }
 
-    if let Some(parent) = config_path.parent() {
-        std::fs::create_dir_all(parent)?;
+    #[cfg(feature = "demo")]
+    {
+        let config_path = mxr_config::config_file_path();
+        let mut config = mxr_config::load_config_from_path(&config_path).unwrap_or_default();
+
+        if config.accounts.contains_key(&key) && !force {
+            anyhow::bail!(
+                "An account with key `{key}` already exists in {}. Pass --force to overwrite.",
+                config_path.display()
+            );
+        }
+
+        let account = AccountConfig {
+            name: "Demo".into(),
+            email: "demo@example.com".into(),
+            enabled: true,
+            sync: Some(SyncProviderConfig::Fake),
+            send: None,
+        };
+        config.accounts.insert(key.clone(), account);
+
+        // Make sure the demo account is the default if no default is set —
+        // saves the user a step.
+        if config
+            .general
+            .default_account
+            .as_deref()
+            .is_none_or(str::is_empty)
+        {
+            config.general.default_account = Some(key.clone());
+        }
+
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        mxr_config::save_config_to_path(&config, &config_path)?;
+
+        println!("✓ Wrote demo account `{key}` to {}", config_path.display());
+        println!();
+        println!("Next steps:");
+        println!("  1. mxr daemon --foreground   # start the daemon (fake provider seeds mail)");
+        println!("  2. mxr                       # open the TUI");
+        println!("  3. mxr search 'is:unread'    # try a CLI search");
+        println!();
+        println!("To remove the demo later:");
+        println!("  mxr accounts remove {key}");
+
+        Ok(())
     }
-    mxr_config::save_config_to_path(&config, &config_path)?;
-
-    println!("✓ Wrote demo account `{key}` to {}", config_path.display());
-    println!();
-    println!("Next steps:");
-    println!("  1. mxr daemon --foreground   # start the daemon (fake provider seeds mail)");
-    println!("  2. mxr                       # open the TUI");
-    println!("  3. mxr search 'is:unread'    # try a CLI search");
-    println!();
-    println!("To remove the demo later:");
-    println!("  mxr accounts remove {key}");
-
-    Ok(())
 }
 
 async fn run_interactive_setup() -> anyhow::Result<()> {
@@ -80,14 +90,23 @@ async fn run_interactive_setup() -> anyhow::Result<()> {
 
     match choice {
         "Demo inbox" => {
-            crate::commands::demo::prepare_environment(
-                mxr_provider_fake::fixtures::CURATED_DEMO_MESSAGE_COUNT,
-            )?;
-            crate::commands::demo::run(
-                mxr_provider_fake::fixtures::CURATED_DEMO_MESSAGE_COUNT,
-                false,
-            )
-            .await?;
+            #[cfg(feature = "demo")]
+            {
+                crate::commands::demo::prepare_environment(
+                    mxr_provider_fake::fixtures::CURATED_DEMO_MESSAGE_COUNT,
+                )?;
+                crate::commands::demo::run(
+                    mxr_provider_fake::fixtures::CURATED_DEMO_MESSAGE_COUNT,
+                    false,
+                )
+                .await?;
+            }
+            #[cfg(not(feature = "demo"))]
+            {
+                anyhow::bail!(
+                    "Demo setup is not enabled in this build; rebuild with `--features demo`"
+                );
+            }
         }
         "Gmail account" => {
             let account_name = text_required("Account key", Some("personal"))?;

@@ -253,10 +253,21 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!();
-    println!("Opening demo TUI. Nothing here touches your real inbox.");
-    crate::server::ensure_daemon_supports_tui().await?;
-    mxr_tui::run().await?;
+    #[cfg(feature = "tui")]
+    {
+        println!();
+        println!("Opening demo TUI. Nothing here touches your real inbox.");
+        crate::server::ensure_daemon_supports_tui().await?;
+        mxr_tui::run().await?;
+    }
+    #[cfg(not(feature = "tui"))]
+    if !no_tui {
+        println!();
+        println!("Demo is ready. TUI support is not enabled in this build.");
+        println!(
+            "Use the CLI commands against the demo profile, or rebuild with `--features tui`."
+        );
+    }
     Ok(())
 }
 

@@ -106,6 +106,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     response
 }
 
+#[cfg(feature = "openapi")]
 pub async fn require_bridge_auth(
     State(state): State<crate::AppState>,
     request: Request,

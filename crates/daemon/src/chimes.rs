@@ -4,7 +4,9 @@ use mxr_protocol::{
     ClientKind, DaemonEvent, IpcMessage, IpcPayload, MutationCommand, Request, Response,
     ResponseData,
 };
+#[cfg(feature = "chimes")]
 use std::path::PathBuf;
+#[cfg(feature = "chimes")]
 use std::process::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -17,7 +19,7 @@ pub(crate) fn preview(config: &ChimeConfig, event: ChimeEvent) -> ChimePlayback 
     let sound = config.sound_for(event);
     let playback = ChimePlayback {
         sound,
-        played: sound != ChimeSound::None,
+        played: cfg!(feature = "chimes") && sound != ChimeSound::None,
     };
     if playback.played {
         spawn_playback(sound, config.volume);
@@ -70,7 +72,7 @@ pub(crate) fn playback_decision(config: &ChimeConfig, event: ChimeEvent) -> Chim
     let sound = config.sound_for(event);
     ChimePlayback {
         sound,
-        played: config.enabled && sound != ChimeSound::None,
+        played: cfg!(feature = "chimes") && config.enabled && sound != ChimeSound::None,
     }
 }
 
@@ -129,6 +131,7 @@ fn event_for_mutation(command: &MutationCommand) -> Option<ChimeEvent> {
     }
 }
 
+#[cfg(feature = "chimes")]
 fn spawn_playback(sound: ChimeSound, volume: f32) {
     let _ = std::thread::Builder::new()
         .name("mxr-chime".into())
@@ -139,6 +142,10 @@ fn spawn_playback(sound: ChimeSound, volume: f32) {
         });
 }
 
+#[cfg(not(feature = "chimes"))]
+fn spawn_playback(_sound: ChimeSound, _volume: f32) {}
+
+#[cfg(feature = "chimes")]
 fn run_player(sound: ChimeSound, volume: f32) -> anyhow::Result<()> {
     let status = Command::new(chime_player_path())
         .arg("--sound")
@@ -153,6 +160,7 @@ fn run_player(sound: ChimeSound, volume: f32) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "chimes")]
 fn chime_player_path() -> PathBuf {
     if let Ok(current_exe) = std::env::current_exe() {
         if let Some(dir) = current_exe.parent() {
@@ -162,6 +170,7 @@ fn chime_player_path() -> PathBuf {
     PathBuf::from(chime_player_filename())
 }
 
+#[cfg(feature = "chimes")]
 fn chime_player_filename() -> &'static str {
     if cfg!(windows) {
         "mxr-chime-player.exe"
@@ -170,6 +179,7 @@ fn chime_player_filename() -> &'static str {
     }
 }
 
+#[cfg(feature = "chimes")]
 fn sound_arg(sound: ChimeSound) -> &'static str {
     match sound {
         ChimeSound::None => "none",

@@ -24,14 +24,14 @@ This skill holds the context that used to bloat always-on agent files. Load it o
 For feature work:
 
 1. Implement in the narrowest crate surface.
-2. Run `scripts/cargo-test -p <crate> --tests`.
-3. Run `cargo build -p mxr`.
-4. Restart stale daemons: `pkill -f 'mxr daemon' 2>/dev/null`, then `cargo run --bin mxr -- daemon --foreground`.
-5. Drive the feature through the CLI, preferably with `--format json`.
+2. Set `CARGO_BUILD_JOBS=1`; every local Cargo command must use one job.
+3. Run the narrowest useful `cargo check -p <crate>` and `scripts/cargo-test -p <crate> --tests`.
+4. Do not run local release builds, `--all-features`, or full-workspace builds during normal iteration. GitHub Actions owns the single production release build.
+5. When runtime verification is necessary, use a debug build only, restart stale daemons, and drive the feature through the CLI with `--format json`.
 6. Inspect daemon state with `mxr events`, `mxr logs`, `mxr doctor`, and `mxr activity`.
 7. Query persisted state back through the CLI, such as `mxr search ... --format json`.
 
-If the daemon will not start, check `cargo build -p mxr`, `pgrep -af 'mxr|cargo'`, `mxr daemon --foreground`, and stale socket files.
+If the daemon will not start, check `CARGO_BUILD_JOBS=1 cargo check -p mxr`, `pgrep -af 'mxr|cargo'`, `mxr daemon --foreground`, and stale socket files.
 
 ## Client and mutation contract
 

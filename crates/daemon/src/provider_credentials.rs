@@ -179,6 +179,7 @@ pub(crate) fn gmail_auth(
     )
 }
 
+#[cfg(feature = "outlook")]
 pub(crate) fn outlook_auth(
     client_id: String,
     token_ref: String,

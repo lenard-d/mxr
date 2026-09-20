@@ -195,6 +195,7 @@ impl RuntimeTasks {
 /// through `DemoLlmProvider` instead. That short-circuits all outbound LLM
 /// traffic so a demo runs fully offline and can never spend the user's
 /// real-account API key by accident, even if `[llm]` is configured.
+#[cfg(feature = "ai")]
 fn build_llm_provider(config: &mxr_config::EffectiveLlmConfig) -> Arc<dyn mxr_llm::LlmProvider> {
     if mxr_config::is_demo_instance() {
         return Arc::new(mxr_llm::DemoLlmProvider::new());
@@ -218,6 +219,11 @@ fn build_llm_provider(config: &mxr_config::EffectiveLlmConfig) -> Arc<dyn mxr_ll
             request_timeout: std::time::Duration::from_secs(config.request_timeout_secs),
         },
     ))
+}
+
+#[cfg(not(feature = "ai"))]
+fn build_llm_provider(_config: &mxr_config::EffectiveLlmConfig) -> Arc<dyn mxr_llm::LlmProvider> {
+    Arc::new(mxr_llm::NoopProvider)
 }
 
 fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::EffectiveLlmConfig {
@@ -630,6 +636,12 @@ fn resolve_locale_code(config: &mxr_config::MxrConfig) -> String {
 impl AppState {
     pub async fn new() -> anyhow::Result<Self> {
         let config = mxr_config::load_config().unwrap_or_default();
+        #[cfg(not(feature = "semantic"))]
+        let config = {
+            let mut config = config;
+            config.search.semantic.enabled = false;
+            config
+        };
         let data_dir = mxr_config::data_dir();
         std::fs::create_dir_all(&data_dir)?;
 
@@ -890,6 +902,7 @@ impl AppState {
                         }
                     }
                 }
+                #[cfg(feature = "outlook")]
                 Some(mxr_config::SyncProviderConfig::OutlookPersonal {
                     client_id,
                     token_ref,
@@ -901,6 +914,7 @@ impl AppState {
                     &acct_config.email,
                     key,
                 )?,
+                #[cfg(feature = "outlook")]
                 Some(mxr_config::SyncProviderConfig::OutlookWork {
                     client_id,
                     token_ref,
@@ -912,6 +926,14 @@ impl AppState {
                     &acct_config.email,
                     key,
                 )?,
+                #[cfg(not(feature = "outlook"))]
+                Some(
+                    mxr_config::SyncProviderConfig::OutlookPersonal { .. }
+                    | mxr_config::SyncProviderConfig::OutlookWork { .. },
+                ) => anyhow::bail!(
+                    "Outlook support is not enabled in this build for account '{key}'; rebuild with `--features outlook`"
+                ),
+                #[cfg(feature = "demo")]
                 Some(mxr_config::SyncProviderConfig::Fake) => {
                     let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
                     if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Fake)) {
@@ -925,6 +947,10 @@ impl AppState {
                     }
                     Some(fake as Arc<dyn MailSyncProvider>)
                 }
+                #[cfg(not(feature = "demo"))]
+                Some(mxr_config::SyncProviderConfig::Fake) => anyhow::bail!(
+                    "Fake provider support is not enabled in this build for account '{key}'; rebuild with `--features demo`"
+                ),
                 None => None,
             };
 
@@ -990,6 +1016,7 @@ impl AppState {
                 }
             }
 
+            #[cfg(feature = "outlook")]
             if let Some(
                 mxr_config::SendProviderConfig::OutlookPersonal { token_ref, .. }
                 | mxr_config::SendProviderConfig::OutlookWork { token_ref, .. },
@@ -1067,6 +1094,20 @@ impl AppState {
                 send_providers.insert(account_id.clone(), send_provider);
             }
 
+            #[cfg(not(feature = "outlook"))]
+            if matches!(
+                acct_config.send,
+                Some(
+                    mxr_config::SendProviderConfig::OutlookPersonal { .. }
+                        | mxr_config::SendProviderConfig::OutlookWork { .. }
+                )
+            ) {
+                anyhow::bail!(
+                    "Outlook send is not enabled in this build for account '{key}'; rebuild with `--features outlook`"
+                );
+            }
+
+            #[cfg(feature = "demo")]
             if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Fake))
                 && !send_providers.contains_key(&account_id)
             {
@@ -1076,6 +1117,13 @@ impl AppState {
                     default_send_provider = Some(fake.clone());
                 }
                 send_providers.insert(account_id.clone(), fake);
+            }
+
+            #[cfg(not(feature = "demo"))]
+            if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Fake)) {
+                anyhow::bail!(
+                    "Fake provider support is not enabled in this build for account '{key}'; rebuild with `--features demo`"
+                );
             }
         }
 
@@ -2071,6 +2119,7 @@ fn search_error_requires_repair(message: &str) -> bool {
         || lower.contains("already an indexwriter working"))
 }
 
+#[cfg(feature = "outlook")]
 fn build_outlook_sync_provider(
     client_id: &Option<String>,
     token_ref: &str,

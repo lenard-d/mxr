@@ -8,7 +8,7 @@ It creates an isolated `MXR_DATA_DIR`/`MXR_CONFIG_DIR`, configures the fake sync
 From the repo root after building the binary:
 
 ```bash
-cargo build -p mxr
+cargo build -p mxr --features demo,mcp
 MXR_BIN=target/debug/mxr bash scripts/v1_launch_proof.sh
 ```
 
@@ -30,7 +30,7 @@ bash scripts/live_provider_smoke_evidence.sh
 
 The evidence script writes JSONL rows to `MXR_LIVE_PROVIDER_EVIDENCE` (or a temp path) and prints `skipped_missing_creds` for each provider whose credential set is incomplete. It records env var names only, never secret values.
 
-- Gmail API/OAuth: requires `MXR_GMAIL_TEST_CLIENT_ID`, `MXR_GMAIL_TEST_CLIENT_SECRET`, and `MXR_GMAIL_TEST_REFRESH_TOKEN`. When all are present the script runs `scripts/cargo-test -p mxr --test live_gmail_e2e -- --ignored --nocapture` against a dedicated throwaway Google account and emits `live_smoke_passed` only after it succeeds.
+- Gmail API/OAuth: requires `MXR_GMAIL_TEST_CLIENT_ID`, `MXR_GMAIL_TEST_CLIENT_SECRET`, and `MXR_GMAIL_TEST_REFRESH_TOKEN`. When all are present the script runs `scripts/cargo-test -p mxr --features live-gmail --test live_gmail_e2e -- --ignored --nocapture` against a dedicated throwaway Google account and emits `live_smoke_passed` only after it succeeds.
 - IMAP: requires `MXR_IMAP_SMOKE_HOST`, `MXR_IMAP_SMOKE_USERNAME`, and `MXR_IMAP_SMOKE_PASSWORD`; missing values produce an explicit `skipped_missing_creds` row. If all values are present before a committed network-safe IMAP smoke exists, the script emits explicit `unavailable_no_live_smoke` evidence instead of silent success.
 - SMTP: requires `MXR_SMTP_SMOKE_HOST`, `MXR_SMTP_SMOKE_USERNAME`, `MXR_SMTP_SMOKE_PASSWORD`, and `MXR_SMTP_SMOKE_TO`; missing values produce an explicit `skipped_missing_creds` row. If all values are present before a committed network-safe SMTP smoke exists, the script emits explicit `unavailable_no_live_smoke` evidence instead of silent success.
 

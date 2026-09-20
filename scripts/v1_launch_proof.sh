@@ -35,7 +35,7 @@ run_mxr() {
   elif [[ -x "${root}/target-cli/debug/mxr" ]]; then
     "${root}/target-cli/debug/mxr" "$@"
   else
-    cargo run --quiet --bin mxr -- "$@"
+    cargo run --quiet --bin mxr --features demo,mcp -- "$@"
   fi
 }
 
@@ -224,7 +224,7 @@ elif os.path.exists('target/debug/mxr'):
 elif os.path.exists('target-cli/debug/mxr'):
     cmd = ['target-cli/debug/mxr', 'mcp', 'serve']
 else:
-    cmd = ['cargo', 'run', '--quiet', '--bin', 'mxr', '--', 'mcp', 'serve']
+    cmd = ['cargo', 'run', '--quiet', '--bin', 'mxr', '--features', 'demo,mcp', '--', 'mcp', 'serve']
 proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ.copy())
 next_id = 1
 

@@ -15,7 +15,7 @@ command -v ffmpeg >/dev/null || {
   exit 1
 }
 
-cargo build --bin mxr
+cargo build --bin mxr --features demo,tui
 
 recording_home="$(mktemp -d /tmp/mxr-demo.XXXXXX)"
 cleanup() {
