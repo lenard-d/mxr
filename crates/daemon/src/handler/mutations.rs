@@ -2508,7 +2508,7 @@ async fn draft_from_server_snapshot(
             .map_err(|error| error.to_string())?;
 
         let content_id = part.content_id().and_then(normalize_remote_content_id);
-        if is_remote_inline_asset(disposition, content_id.as_deref()) {
+        if is_remote_inline_asset(part, disposition, content_id.as_deref()) {
             if let Some(cid) = content_id {
                 inline_assets.push(InlineAsset { cid, path });
                 continue;
@@ -2585,7 +2585,9 @@ fn collect_provider_draft_bodies(
                 collect_provider_draft_bodies(parsed, *child_id, bodies);
             }
         }
-        PartType::Text(body) if bodies.0.is_none() && is_plain_text_part(part) => {
+        PartType::Text(body)
+            if bodies.0.is_none() && is_plain_text_part(part) && !body.trim().is_empty() =>
+        {
             bodies.0 = Some(body.to_string());
         }
         PartType::Html(body) if bodies.1.is_none() => {
@@ -2619,6 +2621,10 @@ fn imported_provider_draft_content(
     // when the provider returns a new multipart/alternative revision.
     match (existing, text, html) {
         (Some(DraftContent::Html { .. }), text, Some(html)) => DraftContent::html(html, text),
+        (Some(DraftContent::Html { .. }), Some(text), None) => {
+            let rendered = mxr_outbound::render::render_markdown(&text);
+            DraftContent::html(rendered.html, Some(text))
+        }
         (_, Some(text), _) => DraftContent::markdown(text),
         (_, None, Some(html)) => DraftContent::html(html, None),
         _ => DraftContent::markdown(String::new()),
@@ -2646,7 +2652,13 @@ fn is_remote_attachment_part(
     }
     matches!(disposition, AttachmentDisposition::Attachment)
         || matches!(part.body, PartType::Binary(_) | PartType::InlineBinary(_))
+        || (matches!(disposition, AttachmentDisposition::Inline) && !is_editable_body_part(part))
         || part.attachment_name().is_some()
+}
+
+fn is_editable_body_part(part: &mail_parser::MessagePart<'_>) -> bool {
+    matches!(part.body, PartType::Html(_))
+        || matches!(part.body, PartType::Text(_)) && is_plain_text_part(part)
 }
 
 fn attached_multipart_descendants(parsed: &mail_parser::Message<'_>) -> HashSet<usize> {
@@ -2725,8 +2737,15 @@ fn remote_attachment_filename(part: &mail_parser::MessagePart<'_>, index: usize)
     )
 }
 
-fn is_remote_inline_asset(disposition: AttachmentDisposition, content_id: Option<&str>) -> bool {
-    !matches!(disposition, AttachmentDisposition::Attachment) && content_id.is_some()
+fn is_remote_inline_asset(
+    part: &mail_parser::MessagePart<'_>,
+    disposition: AttachmentDisposition,
+    content_id: Option<&str>,
+) -> bool {
+    !part.is_multipart()
+        && !part.is_message()
+        && !matches!(disposition, AttachmentDisposition::Attachment)
+        && content_id.is_some()
 }
 
 #[cfg(test)]
@@ -2775,6 +2794,19 @@ mod remote_draft_mime_tests {
     }
 
     #[test]
+    fn blank_plain_alternative_does_not_hide_real_html() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n   \r\n--x\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Actual HTML body</p>\r\n--x--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let (text, html) = exact_provider_draft_bodies(&parsed);
+        let content = imported_provider_draft_content(None, text, html);
+
+        assert!(matches!(
+            content,
+            DraftContent::Html { html, text: None } if html.contains("Actual HTML body")
+        ));
+    }
+
+    #[test]
     fn attached_multipart_descendants_are_not_selected_as_the_body() {
         let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n--outer\r\nContent-Type: multipart/alternative; boundary=nested\r\nContent-Disposition: attachment; filename=\"nested.mime\"\r\n\r\n--nested\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nNested attachment text\r\n--nested\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Nested attachment HTML</p>\r\n--nested--\r\n--outer\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Actual HTML body</p>\r\n--outer--\r\n";
         let parsed = MessageParser::default().parse(raw).unwrap();
@@ -2804,6 +2836,22 @@ mod remote_draft_mime_tests {
     }
 
     #[test]
+    fn linked_html_draft_keeps_html_for_text_only_remote_revision() {
+        let content = imported_provider_draft_content(
+            Some(&DraftContent::html("<p>Old</p>", Some("Old".into()))),
+            Some("Updated text-only body".into()),
+            None,
+        );
+
+        assert!(matches!(
+            content,
+            DraftContent::Html { html, text }
+                if html.contains("Updated text-only body")
+                    && text.as_deref() == Some("Updated text-only body")
+        ));
+    }
+
+    #[test]
     fn message_rfc822_without_disposition_or_name_is_importable() {
         let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nbody\r\n--x\r\nContent-Type: message/rfc822\r\n\r\nFrom: sender@example.com\r\nTo: user@example.com\r\nSubject: forwarded\r\n\r\nmessage\r\n--x--\r\n";
         let parsed = MessageParser::default().parse(raw).unwrap();
@@ -2826,14 +2874,33 @@ mod remote_draft_mime_tests {
     }
 
     #[test]
-    fn content_id_without_inline_disposition_remains_inline() {
+    fn inline_text_resource_is_preserved_but_nested_message_stays_an_attachment() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nBody\r\n--x\r\nContent-Type: text/css\r\nContent-Disposition: inline\r\nContent-ID: <styles@example.com>\r\n\r\nbody { color: red; }\r\n--x\r\nContent-Type: message/rfc822\r\nContent-ID: <forwarded@example.com>\r\n\r\nFrom: sender@example.com\r\nSubject: forwarded\r\n\r\nmessage\r\n--x--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let css = parsed
+            .parts
+            .iter()
+            .find(|part| {
+                part.content_type()
+                    .and_then(|content_type| content_type.subtype())
+                    .is_some_and(|subtype| subtype.eq_ignore_ascii_case("css"))
+            })
+            .unwrap();
+        let nested_message = parsed.parts.iter().find(|part| part.is_message()).unwrap();
+
+        assert!(is_remote_attachment_part(
+            css,
+            remote_attachment_disposition(css)
+        ));
         assert!(is_remote_inline_asset(
-            AttachmentDisposition::Unspecified,
-            Some("image001.png@example.com")
+            css,
+            remote_attachment_disposition(css),
+            css.content_id()
         ));
         assert!(!is_remote_inline_asset(
-            AttachmentDisposition::Attachment,
-            Some("image001.png@example.com")
+            nested_message,
+            remote_attachment_disposition(nested_message),
+            nested_message.content_id()
         ));
     }
 
