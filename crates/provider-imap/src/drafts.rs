@@ -252,12 +252,15 @@ impl ImapProvider {
             .find_pending_replacement(provider_draft_id, &message_id)
             .await?
         {
-            self.delete_draft(provider_draft_id).await.map_err(|error| {
+            // A prior APPEND may have succeeded before deleting the old UID.
+            // Do not adopt that candidate blindly: the local draft may have
+            // changed since the failed attempt. Remove the stale candidate
+            // first, then append the current local content below.
+            self.delete_draft(&recovered_id).await.map_err(|error| {
                 MxrError::Provider(format!(
-                    "Recovered pending IMAP draft replacement {recovered_id}, but old draft deletion failed: {error}"
+                    "Recovered stale IMAP draft replacement {recovered_id}, but cleanup failed: {error}"
                 ))
             })?;
-            return Ok(recovered_id);
         }
         let rfc822 = build_draft_rfc822(draft, from, &message_id).await?;
         let replacement_id = self.append_draft(&rfc822, &message_id).await?;

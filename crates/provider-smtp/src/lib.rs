@@ -237,9 +237,11 @@ fn map_send_error(
 /// failures (4xx / timeout) and hard-fails on permanent ones (5xx).
 #[cfg(not(test))]
 fn classify_smtp_send_error(e: &lettre::transport::smtp::Error) -> MxrError {
-    let is_ambiguous_transport = e.is_timeout()
-        || e.is_transport_shutdown()
-        || (!e.is_transient() && !e.is_permanent() && !e.is_response() && !e.is_client());
+    // Only local client-construction failures and explicit SMTP 4xx/5xx
+    // replies prove a send did not succeed. Network/TLS/shutdown/timeout and
+    // malformed or incomplete response errors can all happen after DATA was
+    // accepted, so every other class is ambiguous.
+    let is_ambiguous_transport = !e.is_client() && !e.is_transient() && !e.is_permanent();
     map_send_error(e.is_transient(), is_ambiguous_transport, e)
 }
 
