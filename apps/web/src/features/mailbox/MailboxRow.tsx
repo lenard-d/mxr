@@ -140,7 +140,7 @@ export function MailboxRow({
             }}
             aria-label={`${selected ? "Deselect" : "Select"} message from ${row.sender}: ${subject}`}
             className={cn(
-              "mailbox-checkbox size-4 rounded-none",
+              "mailbox-checkbox mailbox-checkbox-hit-target size-4 rounded-none",
               selected && "mailbox-checkbox-selected",
             )}
           />

@@ -420,6 +420,7 @@ describe("MailboxList keyboard selection", () => {
     expect(screen.getByRole("checkbox", { name: /select message/i })).toHaveClass(
       "rounded-none",
       "mailbox-checkbox",
+      "mailbox-checkbox-hit-target",
     );
     const selectionLane = container.querySelector('[data-mailbox-control="selection"]');
     expect(selectionLane).toHaveClass("mailbox-selection-lane", "size-8");
