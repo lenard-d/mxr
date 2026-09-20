@@ -2460,9 +2460,8 @@ async fn draft_from_server_snapshot(
     let headers = mxr_mail_parse::parse_headers_from_raw(&raw_headers, None)
         .map_err(|error| error.to_string())?;
 
-    let text = parsed.body_text(0).map(std::borrow::Cow::into_owned);
-    let html = parsed.body_html(0).map(std::borrow::Cow::into_owned);
-    let content = imported_provider_draft_content(text, html);
+    let (text, html) = exact_provider_draft_bodies(&parsed);
+    let content = imported_provider_draft_content(existing.map(|draft| &draft.content), text, html);
 
     let revision_dir = state
         .attachment_dir()
@@ -2557,16 +2556,52 @@ async fn draft_from_server_snapshot(
     })
 }
 
-fn imported_provider_draft_content(text: Option<String>, html: Option<String>) -> DraftContent {
+fn exact_provider_draft_bodies(
+    parsed: &mail_parser::Message<'_>,
+) -> (Option<String>, Option<String>) {
+    let text = parsed.text_body.iter().find_map(|part_id| {
+        let part = parsed.parts.get(*part_id as usize)?;
+        match &part.body {
+            PartType::Text(body) if is_plain_text_part(part) => Some(body.to_string()),
+            _ => None,
+        }
+    });
+    let html = parsed.html_body.iter().find_map(|part_id| {
+        let part = parsed.parts.get(*part_id as usize)?;
+        match &part.body {
+            PartType::Html(body) => Some(body.to_string()),
+            _ => None,
+        }
+    });
+    (text, html)
+}
+
+fn is_plain_text_part(part: &mail_parser::MessagePart<'_>) -> bool {
+    part.content_type().is_none_or(|content_type| {
+        content_type.ctype().eq_ignore_ascii_case("text")
+            && content_type
+                .subtype()
+                .is_none_or(|subtype| subtype.eq_ignore_ascii_case("plain"))
+    })
+}
+
+fn imported_provider_draft_content(
+    existing: Option<&DraftContent>,
+    text: Option<String>,
+    html: Option<String>,
+) -> DraftContent {
     // A provider-generated multipart/alternative draft commonly contains both
     // text/plain and text/html even when the user composed ordinary text. The
     // markdown composer can faithfully edit the plain part, whereas treating
     // the mere presence of an HTML alternative as an authored HTML document
     // makes normal Gmail/IMAP drafts read-only. Angle-bracketed addresses in
     // reply attribution lines are plain text and require no HTML heuristic.
-    match (text, html) {
-        (Some(text), _) => DraftContent::markdown(text),
-        (None, Some(html)) => DraftContent::html(html, None),
+    // A linked draft already known to be authored HTML keeps that representation
+    // when the provider returns a new multipart/alternative revision.
+    match (existing, text, html) {
+        (Some(DraftContent::Html { .. }), text, Some(html)) => DraftContent::html(html, text),
+        (_, Some(text), _) => DraftContent::markdown(text),
+        (_, None, Some(html)) => DraftContent::html(html, None),
         _ => DraftContent::markdown(String::new()),
     }
 }
@@ -2651,25 +2686,45 @@ mod remote_draft_mime_tests {
 
     #[test]
     fn multipart_alternative_prefers_editable_plain_text() {
-        let content = imported_provider_draft_content(
-            Some("Sender <sender@example.com> wrote:\nHello".into()),
-            Some("<p>Hello</p>".into()),
-        );
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nSender <sender@example.com> wrote:\r\nHello\r\n--x\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Hello</p>\r\n--x--\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let (text, html) = exact_provider_draft_bodies(&parsed);
+        let content = imported_provider_draft_content(None, text, html);
 
         assert!(matches!(
             content,
             DraftContent::Markdown { source }
-                if source == "Sender <sender@example.com> wrote:\nHello"
+                if source.contains("Sender <sender@example.com> wrote:")
         ));
     }
 
     #[test]
     fn html_only_provider_draft_remains_html() {
-        let content = imported_provider_draft_content(None, Some("<p>Hello</p>".into()));
+        let raw =
+            b"MIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Hello</p>\r\n";
+        let parsed = MessageParser::default().parse(raw).unwrap();
+        let (text, html) = exact_provider_draft_bodies(&parsed);
+        let content = imported_provider_draft_content(None, text, html);
 
         assert!(matches!(
             content,
-            DraftContent::Html { html, text: None } if html == "<p>Hello</p>"
+            DraftContent::Html { html, text: None } if html.contains("<p>Hello</p>")
+        ));
+    }
+
+    #[test]
+    fn linked_html_draft_keeps_html_on_remote_update() {
+        let content = imported_provider_draft_content(
+            Some(&DraftContent::html("<p>Old</p>", Some("Old".into()))),
+            Some("Updated plain alternative".into()),
+            Some("<p>Updated <strong>HTML</strong></p>".into()),
+        );
+
+        assert!(matches!(
+            content,
+            DraftContent::Html { html, text }
+                if html == "<p>Updated <strong>HTML</strong></p>"
+                    && text.as_deref() == Some("Updated plain alternative")
         ));
     }
 
