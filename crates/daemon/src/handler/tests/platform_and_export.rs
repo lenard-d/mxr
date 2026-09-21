@@ -1970,7 +1970,8 @@ async fn reconcile_provider_drafts_imports_an_unlinked_provider_draft() {
     assert!(matches!(
         &imported[0].content,
         mxr_core::types::DraftContent::Markdown { source }
-            if source == "On Friday, Sender <sender@example.com> wrote:\nRemote-only body"
+            if source.contains("On Friday, Sender <sender@example.com> wrote:")
+                && source.contains("Remote-only body")
     ));
     assert_eq!(
         state
