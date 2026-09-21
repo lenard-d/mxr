@@ -1,4 +1,5 @@
 use super::*;
+use crate::chrome::build_sidebar_sections;
 use chrono::{Local, TimeZone, Utc};
 use futures::{SinkExt, StreamExt};
 use mxr_core::{
@@ -1041,6 +1042,57 @@ fn sample_labels(account_id: &AccountId) -> Vec<Label> {
             role: None,
         },
     ]
+}
+
+#[test]
+fn sidebar_drop_targets_include_account_and_system_actions() {
+    let account_id = AccountId::new();
+    let mut labels = sample_labels(&account_id);
+    for (name, provider_id) in [("Spam", "SPAM"), ("Trash", "TRASH")] {
+        labels.push(Label {
+            id: mxr_core::LabelId::new(),
+            account_id: account_id.clone(),
+            name: name.into(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: provider_id.into(),
+            unread_count: 0,
+            total_count: 0,
+            role: None,
+        });
+    }
+
+    let sections = build_sidebar_sections(
+        &labels,
+        &[],
+        &[],
+        0,
+        &MailboxLensRequest {
+            kind: MailboxLensKind::Inbox,
+            account_id: Some(account_id.clone()),
+            ..Default::default()
+        },
+    );
+    let system_items = sections[0]["items"].as_array().unwrap();
+
+    for (label, action) in [("Spam", "spam"), ("Trash", "trash")] {
+        let item = system_items
+            .iter()
+            .find(|item| item["label"] == label)
+            .unwrap();
+        assert_eq!(item["account_id"], account_id.to_string());
+        assert_eq!(item["lens"]["accountId"], account_id.to_string());
+        assert_eq!(item["lens"]["dropAction"], action);
+    }
+
+    let user_label = sections[1]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["label"] == "Follow Up")
+        .unwrap();
+    assert_eq!(user_label["account_id"], account_id.to_string());
+    assert_eq!(user_label["lens"]["accountId"], account_id.to_string());
 }
 
 fn sample_saved_search(account_id: AccountId) -> SavedSearch {

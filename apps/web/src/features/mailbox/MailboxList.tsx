@@ -26,6 +26,7 @@ import { Inbox } from "lucide-react";
 interface MailboxListProps {
   groups: MessageGroupView[];
   mailboxPath: string;
+  sourceLabel?: string;
   activeThreadId?: string;
   previewOnFocus?: boolean;
   hasMore?: boolean;
@@ -78,6 +79,7 @@ const READ_ONLY_SHORTCUTS = new Set<ShortcutActionId>([
 export function MailboxList({
   groups,
   mailboxPath,
+  sourceLabel,
   activeThreadId,
   previewOnFocus,
   hasMore = false,
@@ -237,10 +239,11 @@ export function MailboxList({
         accountIds: [
           ...new Set(dragRows.flatMap((item) => (item.account_id ? [item.account_id] : []))),
         ],
+        sourceLabel,
         preview: { sender: row.sender, subject: row.subject },
       };
     },
-    [selectedIds, selectedRows],
+    [selectedIds, selectedRows, sourceLabel],
   );
 
   const focusedOrSelectedIds = useCallback((): string[] => {

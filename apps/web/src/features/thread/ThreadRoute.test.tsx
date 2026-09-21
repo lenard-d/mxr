@@ -321,15 +321,28 @@ describe("ThreadRoute", () => {
 
     fireEvent.keyDown(window, { key: "f" });
 
-    // Forward opens the inline composer instead of navigating away.
+    // Forward opens a visible popout composer instead of hiding below the thread.
     expect(useComposeUi.getState().intent?.key).toBe("compose:forward:msg-1");
-    expect(useComposeUi.getState().surface).toBe("inline");
+    expect(useComposeUi.getState().surface).toBe("overlay");
     expect(useUiPrefs.getState().readerLayout).toBe("split");
 
     fireEvent.keyDown(window, { key: "F", shiftKey: true });
 
     expect(useUiPrefs.getState().readerLayout).toBe("full");
   });
+
+  test.each(["split", "full"] as const)(
+    "opens Reply as a popout in %s reader mode",
+    async (readerLayout) => {
+      useUiPrefs.setState({ readerLayout });
+      renderWithQueryClient(<ThreadRoute />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Reply" }));
+
+      expect(useComposeUi.getState().intent?.key).toBe("compose:reply:msg-1");
+      expect(useComposeUi.getState().surface).toBe("overlay");
+    },
+  );
 
   test("linkifies URLs in plain reader bodies", async () => {
     api.fetchThread.mockResolvedValueOnce({

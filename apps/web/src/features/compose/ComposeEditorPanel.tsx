@@ -1,12 +1,4 @@
-import {
-  AlertTriangle,
-  FilePlus2,
-  Loader2,
-  Paperclip,
-  Send,
-  Trash2,
-  X,
-} from "lucide-react";
+import { AlertTriangle, FilePlus2, Loader2, Paperclip, Send, Trash2, X } from "lucide-react";
 import { lazy, Suspense, useRef, useState, type DragEvent } from "react";
 
 import {
@@ -29,7 +21,6 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import type { ComposeIssue, DraftSafetyReport, RuntimeAccount } from "./api";
 import { ComposeActionBar } from "./ComposeActionBar";
 import { useComposeUi } from "./composeUiStore";
-import { ComposeTopBar } from "./ComposeTopBar";
 import { DraftAssist } from "./DraftAssist";
 import { DraftQualityBadges } from "./DraftQualityBadges";
 import { RecipientField } from "./RecipientField";
@@ -50,12 +41,16 @@ const TiptapComposeEditor = lazy(() =>
   })),
 );
 
-export function ComposeEditorPanel({ controller }: { controller: ComposeController }) {
+export function ComposeEditorPanel({
+  controller,
+  onClose,
+}: {
+  controller: ComposeController;
+  onClose?: () => void;
+}) {
   const editorPreference = useUiPrefs((state) => state.composeEditor);
-  const setComposeEditor = useUiPrefs((state) => state.setComposeEditor);
-  // `:q` / `:wq` close the surface-based composer; harmless no-op on the
-  // deep-link route host where no overlay intent is open.
   const closeCompose = useComposeUi((state) => state.closeCompose);
+  const close = onClose ?? closeCompose;
 
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
@@ -94,21 +89,6 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
       className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
       onKeyDown={controller.handleComposeKeyDown}
     >
-      <ComposeTopBar
-        title={controller.intent.title}
-        busy={controller.busy}
-        canServerSave={controller.canServerSave}
-        onRefresh={controller.handleRefreshClick}
-        onServerSave={controller.handleServerSaveClick}
-        onDiscard={controller.requestDiscard}
-        accounts={controller.runtimeAccounts}
-        accountId={draft.accountId}
-        onAccountChange={controller.updateAccount}
-        addresses={controller.accountAddresses}
-        fromAddress={draft.frontmatter.from}
-        onFromChange={(email) => controller.updateFrontmatter("from", email)}
-      />
-
       <div className="shrink-0 border-b border-border">
         <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
           {controller.collaboratorSuggestions.length > 0 ? (
@@ -250,7 +230,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                 onSave={controller.handleSaveClick}
                 onSend={controller.requestSend}
                 onDiscard={controller.requestDiscard}
-                onClose={closeCompose}
+                onClose={close}
               />
             )}
           </Suspense>
@@ -291,12 +271,12 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         onAttach={controller.handleAttachShortcut}
         uploading={controller.uploading}
         busy={controller.busy}
-        saveStatus={controller.saveStatus}
-        dirty={controller.dirty}
         saveError={controller.saveError}
         onRetrySave={controller.retrySave}
-        editorPreference={editorPreference}
-        onEditorChange={setComposeEditor}
+        canServerSave={controller.canServerSave}
+        onRefresh={controller.handleRefreshClick}
+        onServerSave={controller.handleServerSaveClick}
+        onDiscard={controller.requestDiscard}
         suggestion={controller.draftSuggestion}
       />
 
@@ -397,6 +377,7 @@ function AttachmentList({
             className="text-muted-foreground hover:text-foreground"
             onClick={() => onRemove(path)}
             aria-label={`Remove ${basename(path)}`}
+            title={`Remove ${basename(path)}`}
           >
             <X className="size-3" />
           </button>
@@ -465,7 +446,9 @@ function SendConfirmDialog({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>{blocked ? "Send despite warnings?" : "Send message?"}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {blocked ? "Send despite warnings?" : "Send message?"}
+          </AlertDialogTitle>
           <AlertDialogDescription>
             Send to {recipientCount} {recipientCount === 1 ? "recipient" : "recipients"} via{" "}
             {account?.email ?? "the selected account"}.

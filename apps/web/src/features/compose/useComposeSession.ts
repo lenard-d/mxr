@@ -36,10 +36,8 @@ import {
   type RuntimeAccount,
   type SuggestedCollaborator,
 } from "./api";
-import { fetchAccountAddresses } from "@/features/accounts/api";
 import { archiveMessages } from "@/features/mailbox/api";
 import { requestCoordinator } from "@/lib/requestCoordinator";
-import { formatRelativeAge } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import type {
@@ -115,14 +113,10 @@ export interface ComposeController {
 
   draft: ComposeDraftState | null;
   dirty: boolean;
-  saveStatus: string;
   saveError: string | null;
   visibleIssues: ComposeIssue[];
   recipientCount: number;
-  runtimeAccounts: RuntimeAccount[];
   selectedAccount: RuntimeAccount | undefined;
-  /** Send-as addresses (primary + aliases) for the selected account. */
-  accountAddresses: string[];
   canServerSave: boolean;
   busy: boolean;
   uploading: number;
@@ -151,7 +145,7 @@ export interface ComposeController {
     value: ComposeFrontmatter[K],
   ) => void;
   updateBody: (value: string) => void;
-  updateAccount: (accountId: string) => void;
+  flushAutosave: () => Promise<void>;
   handleSaveClick: () => Promise<void>;
   handleServerSaveClick: () => Promise<void>;
   handleRefreshClick: () => Promise<void>;
@@ -250,7 +244,6 @@ export function useComposeSession(
   draftRef.current = draft;
   const lastSavedFingerprintRef = useRef<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [sendLaterOpen, setSendLaterOpen] = useState(false);
@@ -390,7 +383,6 @@ export function useComposeSession(
     setDraft(next);
     setDirty(changed);
     setSaveError(null);
-    setLastSavedAt(new Date());
     lastSavedFingerprintRef.current = changed
       ? draftFingerprint(baseDraft)
       : draftFingerprint(next);
@@ -432,7 +424,6 @@ export function useComposeSession(
       } else if (latest) {
         setDraft({ ...latest, issues: response.session.issues });
       }
-      setLastSavedAt(new Date());
       void queryClient.invalidateQueries({ queryKey: ["drafts"] });
       return response.session;
     } catch (error) {
@@ -448,7 +439,7 @@ export function useComposeSession(
       void saveCurrentDraft().catch((error: Error) => {
         toast.error("Autosave failed", { description: error.message });
       });
-    }, 3000);
+    }, 1000);
     return () => window.clearTimeout(handle);
   }, [dirty, draft, saveCurrentDraft]);
 
@@ -514,32 +505,6 @@ export function useComposeSession(
     ? runtimeAccounts.find((account) => account.account_id === draft.accountId)
     : undefined;
 
-  // Aliases the selected account may send as (send-as). Shares the cache key
-  // used by the account-detail address editor so both stay consistent.
-  const addressesQuery = useQuery({
-    queryKey: ["account-addresses", selectedAccount?.account_id],
-    queryFn: () => fetchAccountAddresses(selectedAccount?.account_id ?? ""),
-    enabled: Boolean(selectedAccount?.account_id),
-    staleTime: 60_000,
-  });
-  // Union of the account's primary email and its configured aliases, primary
-  // first (it always leads because we prepend it), deduped, so the current
-  // `from` always has a matching option in the picker.
-  const accountAddresses: string[] = (() => {
-    if (!selectedAccount) return [];
-    const fetched = addressesQuery.data?.addresses ?? [];
-    const emails = [selectedAccount.email, ...fetched.map((address) => address.email)].filter(
-      (email) => email.length > 0,
-    );
-    return [...new Set(emails)];
-  })();
-  const saveStatus = updateSession.isPending
-    ? "Saving..."
-    : dirty
-      ? "Unsaved changes"
-      : lastSavedAt
-        ? `Saved ${formatRelativeAge(lastSavedAt)} ago`
-        : "Not saved yet";
   const visibleIssues = draft ? (dirty ? localComposeIssues(draft) : draft.issues) : [];
   const recipientCount = draft ? countRecipients(draft.frontmatter) : 0;
   const canServerSave = Boolean(selectedAccount?.capabilities?.supports_server_drafts);
@@ -562,23 +527,6 @@ export function useComposeSession(
     setDirty(true);
   }
 
-  function updateAccount(accountId: string) {
-    const account = runtimeAccounts.find((item) => item.account_id === accountId);
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            accountId,
-            frontmatter: {
-              ...current.frontmatter,
-              from: account?.email ?? current.frontmatter.from,
-            },
-          }
-        : current,
-    );
-    setDirty(true);
-  }
-
   function isCurrentDraftSaved(current: ComposeDraftState): boolean {
     return draftFingerprint(current) === lastSavedFingerprintRef.current;
   }
@@ -586,6 +534,16 @@ export function useComposeSession(
   async function handleSaveClick() {
     await saveCurrentDraft();
     toast.success("Draft saved locally");
+  }
+
+  async function flushAutosave() {
+    while (true) {
+      const current = draftRef.current;
+      if (!current || isCurrentDraftSaved(current)) return;
+      await saveCurrentDraft();
+      const latest = draftRef.current;
+      if (!latest || isCurrentDraftSaved(latest)) return;
+    }
   }
 
   async function handleServerSaveClick() {
@@ -611,7 +569,6 @@ export function useComposeSession(
     setDraft(next);
     setDirty(false);
     setSaveError(null);
-    setLastSavedAt(new Date());
     toast.success("Draft refreshed");
   }
 
@@ -1042,13 +999,10 @@ export function useComposeSession(
 
     draft,
     dirty,
-    saveStatus,
     saveError,
     visibleIssues,
     recipientCount,
-    runtimeAccounts,
     selectedAccount,
-    accountAddresses,
     canServerSave,
     busy,
     uploading,
@@ -1074,7 +1028,7 @@ export function useComposeSession(
 
     updateFrontmatter,
     updateBody,
-    updateAccount,
+    flushAutosave,
     handleSaveClick,
     handleServerSaveClick,
     handleRefreshClick,

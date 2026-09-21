@@ -635,6 +635,7 @@ pub async fn move_msg(
             Request::mutation(MutationCommand::Move {
                 message_ids: ids,
                 target_label: target_label.clone(),
+                source_label: None,
             })
         },
     )

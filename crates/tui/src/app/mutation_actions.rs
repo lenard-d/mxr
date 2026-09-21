@@ -307,6 +307,7 @@ impl App {
                             request: Request::mutation(MutationCommand::Move {
                                 message_ids: ids.clone(),
                                 target_label: label_name.clone(),
+                                source_label: None,
                             }),
                             effect: remove_from_list_effect(&ids),
                             optimistic_effect: Some(optimistic_effect),

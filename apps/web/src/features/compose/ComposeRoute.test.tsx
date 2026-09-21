@@ -161,7 +161,7 @@ describe("ComposeRoute keyboard flow", () => {
     expect(screen.getByText("alpha@example.com")).toBeVisible();
   });
 
-  test("does not mark an unchanged loaded draft dirty", async () => {
+  test("does not autosave an unchanged loaded draft", async () => {
     api.startComposeSession.mockResolvedValue({
       session: {
         ...composeSession.session,
@@ -174,23 +174,35 @@ describe("ComposeRoute keyboard flow", () => {
     });
     renderWithQueryClient(<ComposeRoute />);
 
-    // Rendering recipient chips for a loaded draft must not flip the autosave
-    // fingerprint: the status stays "Saved", not "Unsaved changes".
     await screen.findByLabelText("To");
-    expect(await screen.findByText(/saved/i)).toBeVisible();
-    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
     expect(api.updateComposeSession).not.toHaveBeenCalled();
   });
 
-  test("surfaces the send shortcut and writing controls", async () => {
+  test("shows a simple icon-first action bar", async () => {
     renderWithQueryClient(<ComposeRoute />);
 
-    const send = await screen.findByRole("button", { name: "Send⌘↵" });
+    const send = await screen.findByRole("button", { name: "Send" });
     expect(send).toBeVisible();
-    expect(screen.getByText("⌘↵")).toBeVisible();
     expect(screen.getByRole("button", { name: "Send later" })).toBeVisible();
-    expect(screen.getByRole("button", { name: /attach/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Attach files" })).toBeVisible();
     expect(screen.getByRole("button", { name: /more compose actions/i })).toBeVisible();
+    expect(screen.queryByText("Rich text")).not.toBeInTheDocument();
+    expect(screen.queryByText("Markdown")).not.toBeInTheDocument();
+    expect(screen.queryByText(/saved .* ago/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /account/i })).not.toBeInTheDocument();
+  });
+
+  test("opens Draft for me as a complete dialog", async () => {
+    renderWithQueryClient(<ComposeRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Draft for me" }));
+
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Draft for me" })).toBeVisible();
+    expect(screen.getByLabelText("What should this say?")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Adjust" }));
+    expect(screen.getByText("Register")).toBeVisible();
+    expect(screen.getByText("Length")).toBeVisible();
   });
 });
 

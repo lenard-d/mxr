@@ -90,12 +90,17 @@ export function MailboxRoute() {
       : (location.accountKey ?? "all");
   const mailboxPath = mailboxPathFromLocation(location, accountKey);
   const visibleGroups = filterMailboxGroups(data.mailbox.groups, statusFilter);
+  const sourceLabel =
+    location.lens.kind === "inbox" || location.lens.kind === "label"
+      ? data.mailbox.lensLabel
+      : undefined;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background lg:border-r lg:border-border">
       <MailboxList
         groups={visibleGroups}
         mailboxPath={mailboxPath}
+        sourceLabel={sourceLabel}
         activeThreadId={activeThreadId}
         previewOnFocus={Boolean(activeThreadId)}
         hasMore={mailbox.hasNextPage}

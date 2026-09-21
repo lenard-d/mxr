@@ -216,6 +216,8 @@ pub(super) struct ModifyLabelsRequest {
 pub(super) struct MoveRequest {
     pub(super) message_ids: Vec<String>,
     pub(super) target_label: String,
+    #[serde(default)]
+    pub(super) source_label: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

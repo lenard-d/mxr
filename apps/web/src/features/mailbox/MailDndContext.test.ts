@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { resolveMailDrop, resolveSidebarDropTarget, type MailDragSource } from "./MailDndContext";
+import {
+  parseMailDragSource,
+  resolveMailDrop,
+  resolveSidebarDropTarget,
+  type MailDragSource,
+} from "./MailDndContext";
 
 const source: MailDragSource = {
   type: "mail-row",
@@ -10,8 +15,10 @@ const source: MailDragSource = {
 
 describe("mailbox drag-and-drop target resolution", () => {
   test("moves a row selection to a user label", () => {
+    const sourceFromFolder = { ...source, sourceLabel: "Waiting" };
+
     expect(
-      resolveMailDrop(source, {
+      resolveMailDrop(sourceFromFolder, {
         id: "label:account-1:label-work",
         label: "Work",
         kind: "user-label",
@@ -21,8 +28,19 @@ describe("mailbox drag-and-drop target resolution", () => {
       kind: "mutation",
       action: "move",
       messageIds: ["message-1", "message-2"],
-      payload: { label: "Work" },
+      payload: { label: "Work", sourceLabel: "Waiting" },
     });
+  });
+
+  test("preserves the source mailbox from the runtime drag payload", () => {
+    expect(
+      parseMailDragSource({
+        type: "mail-row",
+        messageIds: ["message-1"],
+        accountIds: ["account-1"],
+        sourceLabel: "Waiting",
+      }),
+    ).toMatchObject({ sourceLabel: "Waiting" });
   });
 
   test("maps system archive, spam, and trash targets to existing mutations", () => {

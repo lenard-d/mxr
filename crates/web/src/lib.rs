@@ -1689,6 +1689,7 @@ async fn move_messages(
         mxr_protocol::MutationCommand::Move {
             message_ids: parse_message_ids(&request.message_ids)?,
             target_label: request.target_label,
+            source_label: request.source_label,
         },
     )
     .await

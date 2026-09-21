@@ -32,11 +32,23 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const closeCompose = useComposeUi((s) => s.closeCompose);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [closing, setClosing] = useState(false);
 
   const controller = useComposeSession(intent, {
     onSent: closeCompose,
     onDiscarded: closeCompose,
   });
+  const closeAfterAutosave = () => {
+    if (closing) return;
+    setClosing(true);
+    const closingIntentKey = intent.key;
+    void controller
+      .flushAutosave()
+      .then(() => {
+        if (useComposeUi.getState().intent?.key === closingIntentKey) closeCompose();
+      })
+      .catch(() => setClosing(false));
+  };
 
   // The inline slot lives at the bottom of the thread reader; re-resolve
   // it whenever the route changes.
@@ -64,7 +76,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       </Button>
     </div>
   ) : controller.draft ? (
-    <ComposeEditorPanel controller={controller} />
+    <ComposeEditorPanel controller={controller} onClose={closeAfterAutosave} />
   ) : null;
 
   const chrome = (
@@ -107,8 +119,10 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Close composer (draft is saved)"
-            onClick={closeCompose}
+            aria-label="Close composer"
+            title="Close composer"
+            onClick={closeAfterAutosave}
+            disabled={closing}
           >
             <X className="size-3.5" />
           </Button>

@@ -235,10 +235,15 @@ export function deleteLabel(input: { name: string; accountId?: string }): Promis
 export function moveMessagesToLabel(
   messageIds: string[],
   targetLabel: string,
+  sourceLabel?: string,
 ): Promise<MutationResponse> {
   return apiFetch<MutationResponse>("/api/v1/mail/mutations/move", {
     method: "POST",
-    body: { message_ids: messageIds, target_label: targetLabel },
+    body: {
+      message_ids: messageIds,
+      target_label: targetLabel,
+      ...(sourceLabel ? { source_label: sourceLabel } : {}),
+    },
   });
 }
 

@@ -403,6 +403,7 @@ fn move_to_label_removes_message_optimistically() {
                 MutationCommand::Move {
                     message_ids,
                     target_label,
+                    ..
                 },
             ..
         } => {

@@ -62,6 +62,8 @@ export type MailAction =
 export interface MailActionPayload {
   /** Required for label/move actions — the label name being added, removed, or moved into. */
   label?: string;
+  /** Current mailbox label for a move; omitted when the source is not a concrete mailbox. */
+  sourceLabel?: string;
   /** Route source queue label and optional archive flag. */
   fromQueueLabel?: string;
   archive?: boolean;
@@ -193,7 +195,7 @@ function runAction(
       return readAndArchiveMessages(ids);
     case "move": {
       if (!payload?.label) throw new Error("move requires a target label");
-      return moveMessagesToLabel(ids, payload.label);
+      return moveMessagesToLabel(ids, payload.label, payload.sourceLabel);
     }
     case "route": {
       if (!payload?.label) throw new Error("route requires a target label");

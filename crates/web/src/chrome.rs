@@ -311,6 +311,7 @@ pub(crate) fn build_sidebar_sections(
             system_items.push(json!({
                 "id": slugify(&label.name),
                 "label": label.name,
+                "account_id": label.account_id,
                 "unread": label.unread_count,
                 "total": label.total_count,
                 "active": active_lens.kind == MailboxLensKind::Label
@@ -318,6 +319,12 @@ pub(crate) fn build_sidebar_sections(
                     || active_lens.kind == MailboxLensKind::Inbox && name == "Inbox",
                 "lens": {
                     "kind": if name == "Inbox" { "inbox" } else { "label" },
+                    "accountId": label.account_id,
+                    "dropAction": match name {
+                        "Spam" => Some("spam"),
+                        "Trash" => Some("trash"),
+                        _ => None,
+                    },
                     "labelId": if name == "Inbox" {
                         None::<String>
                     } else {
@@ -343,6 +350,7 @@ pub(crate) fn build_sidebar_sections(
             json!({
                 "id": slugify(&label.name),
                 "label": label.name,
+                "account_id": label.account_id,
                 "unread": label.unread_count,
                 "total": label.total_count,
                 "active": active_lens.kind == MailboxLensKind::Label
@@ -350,6 +358,7 @@ pub(crate) fn build_sidebar_sections(
                 "lens": {
                     "kind": "label",
                     "labelId": label.id.to_string(),
+                    "accountId": label.account_id,
                 },
             })
         })

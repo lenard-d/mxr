@@ -1,9 +1,23 @@
-import { Clock, Loader2, Paperclip, Send } from "lucide-react";
+import {
+  Cloud,
+  Clock,
+  Loader2,
+  MoreHorizontal,
+  Paperclip,
+  RefreshCw,
+  Send,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn } from "@/lib/utils";
-import type { ComposeEditor } from "@/state/uiPrefsStore";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DraftQualityBadges } from "./DraftQualityBadges";
 import type { DraftSuggestionResponse } from "./types";
 
@@ -13,12 +27,12 @@ interface ComposeActionBarProps {
   onAttach: () => void;
   uploading: number;
   busy: boolean;
-  saveStatus: string;
-  dirty: boolean;
   saveError: string | null;
   onRetrySave: () => void;
-  editorPreference: ComposeEditor;
-  onEditorChange: (editor: ComposeEditor) => void;
+  canServerSave: boolean;
+  onRefresh: () => void;
+  onServerSave: () => void;
+  onDiscard: () => void;
   suggestion: DraftSuggestionResponse | null;
 }
 
@@ -28,23 +42,26 @@ export function ComposeActionBar({
   onAttach,
   uploading,
   busy,
-  saveStatus,
-  dirty,
   saveError,
   onRetrySave,
-  editorPreference,
-  onEditorChange,
+  canServerSave,
+  onRefresh,
+  onServerSave,
+  onDiscard,
   suggestion,
 }: ComposeActionBarProps) {
   return (
     <footer className="shrink-0 border-t border-border bg-card/30">
-      <div className="mx-auto flex h-14 w-full max-w-[860px] items-center gap-2 px-5">
-        <Button type="button" onClick={onSend} disabled={busy} className="gap-2">
+      <div className="mx-auto flex h-16 w-full max-w-[720px] items-center gap-1.5 px-6">
+        <Button
+          type="button"
+          size="lg"
+          onClick={onSend}
+          disabled={busy}
+          className="compose-primary gap-2 px-5 shadow-sm"
+        >
           <Send className="size-4" />
           Send
-          <kbd className="ml-0.5 rounded border border-primary-foreground/25 bg-primary-foreground/10 px-1 py-0.5 font-mono text-[10px] leading-none">
-            ⌘↵
-          </kbd>
         </Button>
         <Button
           type="button"
@@ -60,32 +77,55 @@ export function ComposeActionBar({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           onClick={onAttach}
           disabled={uploading > 0}
-          className="gap-1.5"
+          aria-label="Attach files"
+          title="Attach files (⇧⌘A)"
         >
           {uploading > 0 ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <Paperclip className="size-3.5" />
           )}
-          Attach
         </Button>
-        <ToggleGroup
-          type="single"
-          value={editorPreference}
-          onValueChange={(value) => value && onEditorChange(value as ComposeEditor)}
-          aria-label="Editor mode"
-        >
-          <ToggleGroupItem value="tiptap" size="sm" className="px-2.5 text-2xs">
-            Rich text
-          </ToggleGroupItem>
-          <ToggleGroupItem value="codemirror-vim" size="sm" className="px-2.5 text-2xs">
-            Markdown
-          </ToggleGroupItem>
-        </ToggleGroup>
-        <div className="ml-auto flex min-w-0 items-center gap-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="More compose actions"
+              title="More compose actions"
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuItem disabled={busy} onSelect={onRefresh}>
+              <RefreshCw className="size-3.5" />
+              Refresh from daemon
+              <DropdownMenuShortcut>⇧⌘R</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            {canServerSave ? (
+              <DropdownMenuItem disabled={busy} onSelect={onServerSave}>
+                <Cloud className="size-3.5" />
+                Save to server draft
+                <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={busy}
+              onSelect={onDiscard}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="size-3.5" />
+              Discard draft
+              <DropdownMenuShortcut>⌘⌫</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <div className="ml-auto flex min-w-0 items-center gap-2">
           <DraftQualityBadges suggestion={suggestion} compact />
           {saveError ? (
             <span role="alert" className="flex min-w-0 items-center gap-1.5">
@@ -103,11 +143,7 @@ export function ComposeActionBar({
                 Retry
               </Button>
             </span>
-          ) : (
-            <span className={cn("text-2xs", dirty ? "text-warning" : "text-success")}>
-              {saveStatus}
-            </span>
-          )}
+          ) : null}
         </div>
       </div>
     </footer>

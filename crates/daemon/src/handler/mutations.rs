@@ -1030,9 +1030,14 @@ fn mutation_command_with_ids(
             add: add.clone(),
             remove: remove.clone(),
         },
-        MutationCommand::Move { target_label, .. } => MutationCommand::Move {
+        MutationCommand::Move {
+            target_label,
+            source_label,
+            ..
+        } => MutationCommand::Move {
             message_ids,
             target_label: target_label.clone(),
+            source_label: source_label.clone(),
         },
         MutationCommand::Route {
             to_label,
@@ -1522,7 +1527,11 @@ async fn apply_mutation_to_envelope(
             reconcile_label_mutation(state, provider, message_id, &resolved_add, &resolved_remove)
                 .await?;
         }
-        MutationCommand::Move { target_label, .. } => {
+        MutationCommand::Move {
+            target_label,
+            source_label,
+            ..
+        } => {
             let labels = state
                 .store
                 .list_labels_by_account(&envelope.account_id)
@@ -1530,6 +1539,8 @@ async fn apply_mutation_to_envelope(
                 .map_err(|e| e.to_string())?;
             let resolved_target =
                 resolve_to_provider_ids(&labels, std::slice::from_ref(target_label));
+            let source = source_label.as_deref().unwrap_or("INBOX").to_string();
+            let resolved_source = resolve_to_provider_ids(&labels, &[source]);
             apply_one_mutation(
                 state,
                 provider,
@@ -1539,7 +1550,7 @@ async fn apply_mutation_to_envelope(
                 mxr_core::Mutation::ModifyLabels {
                     provider_message_id: provider_id.clone(),
                     add: resolved_target.clone(),
-                    remove: vec!["INBOX".to_string()],
+                    remove: resolved_source.clone(),
                 },
                 &envelope.account_id,
             )
@@ -1549,7 +1560,7 @@ async fn apply_mutation_to_envelope(
                 provider,
                 message_id,
                 &resolved_target,
-                &["INBOX".to_string()],
+                &resolved_source,
             )
             .await?;
         }

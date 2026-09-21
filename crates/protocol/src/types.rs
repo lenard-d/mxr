@@ -1701,6 +1701,8 @@ pub enum MutationCommand {
     Move {
         message_ids: Vec<MessageId>,
         target_label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_label: Option<String>,
     },
     Route {
         message_ids: Vec<MessageId>,

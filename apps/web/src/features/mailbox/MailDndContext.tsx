@@ -38,6 +38,7 @@ export interface MailDragSource {
   type: "mail-row";
   messageIds: string[];
   accountIds?: string[];
+  sourceLabel?: string;
   preview?: {
     sender?: string;
     subject?: string;
@@ -91,7 +92,10 @@ export function resolveSidebarDropTarget(item: SidebarItem): MailDropTarget | un
  * Keeping this seam pure makes the destructive/system mapping testable and
  * gives callers one place to enforce the cross-account safety rule.
  */
-export function resolveMailDrop(source: MailDragSource, target: MailDropTarget): MailDropResolution {
+export function resolveMailDrop(
+  source: MailDragSource,
+  target: MailDropTarget,
+): MailDropResolution {
   const messageIds = uniqueStrings(source.messageIds);
   if (messageIds.length === 0) {
     return { kind: "reject", reason: "No messages available to move." };
@@ -112,11 +116,15 @@ export function resolveMailDrop(source: MailDragSource, target: MailDropTarget):
   if (target.kind === "user-label") {
     const label = target.label.trim();
     if (!label) return { kind: "reject", reason: "This label has no name." };
+    const sourceLabel = source.sourceLabel?.trim() || undefined;
+    if (sourceLabel?.localeCompare(label, undefined, { sensitivity: "accent" }) === 0) {
+      return { kind: "reject", reason: "Messages are already in this folder." };
+    }
     return {
       kind: "mutation",
       action: "move",
       messageIds,
-      payload: { label },
+      payload: { label, sourceLabel },
     };
   }
 
@@ -140,7 +148,7 @@ export function MailDndProvider({ children }: { children: ReactNode }) {
   const move = useOptimisticMailMutation("move");
 
   function onDragStart(event: DragStartEvent) {
-    const source = mailDragSource(event.active.data.current);
+    const source = parseMailDragSource(event.active.data.current);
     setActiveSource(source);
     if (source) {
       const count = source.messageIds.length;
@@ -149,7 +157,7 @@ export function MailDndProvider({ children }: { children: ReactNode }) {
   }
 
   function onDragEnd(event: DragEndEvent) {
-    const source = mailDragSource(event.active.data.current);
+    const source = parseMailDragSource(event.active.data.current);
     const target = mailDropTarget(event.over?.data.current);
     setActiveSource(null);
 
@@ -205,7 +213,11 @@ export function MailDropTarget({
 }) {
   const enabled = useContext(MailDndEnabledContext);
   if (!enabled) return children;
-  return <EnabledMailDropTarget target={target} className={className}>{children}</EnabledMailDropTarget>;
+  return (
+    <EnabledMailDropTarget target={target} className={className}>
+      {children}
+    </EnabledMailDropTarget>
+  );
 }
 
 function EnabledMailDropTarget({
@@ -292,18 +304,22 @@ function runMutation(
   }
 }
 
-function mailDragSource(value: unknown): MailDragSource | null {
-  if (!isRecord(value) || value.type !== "mail-row" || !Array.isArray(value.messageIds)) return null;
+export function parseMailDragSource(value: unknown): MailDragSource | null {
+  if (!isRecord(value) || value.type !== "mail-row" || !Array.isArray(value.messageIds))
+    return null;
   const messageIds = value.messageIds.filter(isString);
   if (messageIds.length === 0) return null;
-  const accountIds = Array.isArray(value.accountIds) ? value.accountIds.filter(isString) : undefined;
+  const accountIds = Array.isArray(value.accountIds)
+    ? value.accountIds.filter(isString)
+    : undefined;
+  const sourceLabel = isString(value.sourceLabel) ? value.sourceLabel : undefined;
   const preview = isRecord(value.preview)
     ? {
         sender: isString(value.preview.sender) ? value.preview.sender : undefined,
         subject: isString(value.preview.subject) ? value.preview.subject : undefined,
       }
     : undefined;
-  return { type: "mail-row", messageIds, accountIds, preview };
+  return { type: "mail-row", messageIds, accountIds, sourceLabel, preview };
 }
 
 function mailDropTarget(value: unknown): MailDropTarget | null {

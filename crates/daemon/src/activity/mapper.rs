@@ -151,6 +151,7 @@ pub fn map_request(
             MutationCommand::Move {
                 message_ids,
                 target_label,
+                ..
             } => (
                 "mail.move",
                 Some("message"),

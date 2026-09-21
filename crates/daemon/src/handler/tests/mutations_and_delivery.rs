@@ -311,6 +311,40 @@ async fn upsert_test_label(state: &AppState, label: &str) -> mxr_core::Label {
 }
 
 #[tokio::test]
+async fn move_removes_the_explicit_source_mailbox() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    add_test_label_to_message(&state, &id, "Waiting").await;
+    upsert_test_label(&state, "Work").await;
+
+    let request = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Move {
+            message_ids: vec![id.clone()],
+            target_label: "Work".to_string(),
+            source_label: Some("Waiting".to_string()),
+        })),
+    };
+    assert_mutation_succeeded(handle_request(&state, &request).await.payload);
+
+    let moved = state.store.get_envelope(&id).await.unwrap().unwrap();
+    assert!(
+        moved.label_provider_ids.iter().any(|label| label == "Work"),
+        "target mailbox must be applied: {:?}",
+        moved.label_provider_ids
+    );
+    assert!(
+        !moved
+            .label_provider_ids
+            .iter()
+            .any(|label| label == "Waiting"),
+        "source mailbox must be removed: {:?}",
+        moved.label_provider_ids
+    );
+}
+
+#[tokio::test]
 async fn route_adds_target_removes_queue_archives_read_and_uses_single_undo_id() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;

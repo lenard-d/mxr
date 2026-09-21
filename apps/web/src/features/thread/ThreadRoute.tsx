@@ -423,9 +423,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const compose = useCallback(
     (composeMode: "single" | "all" | "forward") => {
       if (!primaryMessage) return;
-      // Reply opens inline at the bottom of the thread; the host keeps the
-      // session alive if the user pops it out or goes fullscreen.
-      useComposeUi.getState().openCompose(replyIntent(primaryMessage.id, composeMode), "inline");
+      useComposeUi.getState().openCompose(replyIntent(primaryMessage.id, composeMode), "overlay");
     },
     [primaryMessage],
   );

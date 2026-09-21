@@ -108,23 +108,8 @@ const fallbackLenses: NavItem[] = [
   { to: "/m/starred", label: "Starred", Icon: Star },
   { to: "/m/snoozed", label: "Snoozed", Icon: Sparkles },
   { to: "/m/sent", label: "Sent", Icon: Send },
-  {
-    to: "/m/archive",
-    label: "Archive",
-    Icon: Archive,
-    dropTarget: {
-      id: "system:archive:fallback",
-      label: "Archive",
-      kind: "system",
-      action: "archive",
-    },
-  },
-  {
-    to: "/m/trash",
-    label: "Trash",
-    Icon: Trash2,
-    dropTarget: { id: "system:trash:fallback", label: "Trash", kind: "system", action: "trash" },
-  },
+  { to: "/m/archive", label: "Archive", Icon: Archive },
+  { to: "/m/trash", label: "Trash", Icon: Trash2 },
 ];
 
 const systemItems: NavItem[] = [
