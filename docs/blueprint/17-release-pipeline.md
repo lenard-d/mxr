@@ -15,7 +15,7 @@ pay the same CI cost. `workflow_dispatch` marks every lane as changed.
 
 ### Personal VPS build and deploy
 
-Pushes to `lenard/mail-workspace` run
+Pushes to `main` run
 [build-vps.yml](../../.github/workflows/build-vps.yml). It builds exactly one
 Linux `mxr` binary with the `personal` feature profile and uploads a checksummed
 artifact. The VPS deploy is intentionally host-driven, so GitHub needs no SSH

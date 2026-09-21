@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo="${MXR_GITHUB_REPO:-lenard-d/mxr}"
-branch="${MXR_DEPLOY_BRANCH:-lenard/mail-workspace}"
+branch="${MXR_DEPLOY_BRANCH:-main}"
 workflow="${MXR_BUILD_WORKFLOW:-build-vps.yml}"
 target="${MXR_DEPLOY_TARGET:-/home/lenard/apps/mxr/current/mxr}"
 service="${MXR_SYSTEMD_SERVICE:-mxr.service}"
