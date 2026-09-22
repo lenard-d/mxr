@@ -337,6 +337,9 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
     onError: (error, input, context) => {
       const resolvedPayload = context?.payload ?? normalizeMutationInput(input, payload).payload;
       restore(qc, context);
+      void qc.invalidateQueries({ queryKey: ["mailbox"] });
+      void qc.invalidateQueries({ queryKey: ["thread"] });
+      void qc.invalidateQueries({ queryKey: shellKey });
       const reauthAccount = findReauthableAccount(error);
       toast.error(`${actionLabel(action, resolvedPayload)} failed`, {
         description: error.message,
@@ -355,6 +358,7 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
       });
     },
     onSuccess: (response, input) => {
+      void qc.invalidateQueries({ queryKey: shellKey });
       if (silentSuccess) return;
       const { messageIds, payload: resolvedPayload } = normalizeMutationInput(input, payload);
       const count = response.result?.succeeded ?? messageIds.length;
@@ -380,11 +384,6 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
       } else {
         toast.success(`${label} ${count}`);
       }
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["mailbox"] });
-      void qc.invalidateQueries({ queryKey: ["thread"] });
-      void qc.invalidateQueries({ queryKey: shellKey });
     },
   });
 }

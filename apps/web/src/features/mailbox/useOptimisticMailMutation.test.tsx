@@ -130,7 +130,7 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
       await result.current.mutateAsync(["m1", "m2"]);
     });
 
-    expect(api.moveMessagesToLabel).toHaveBeenCalledWith(["m1", "m2"], "Receipts");
+    expect(api.moveMessagesToLabel).toHaveBeenCalledWith(["m1", "m2"], "Receipts", undefined);
     const after = client.getQueryData(mailboxKey) as typeof baseMailbox;
     const remaining = after.mailbox.groups[0]?.rows.map((r) => r.id) ?? [];
     expect(remaining).toEqual(["m3"]);
@@ -331,5 +331,22 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
       "Marked read 1",
       expect.objectContaining({ className: "toast-category-read-state" }),
     );
+  });
+
+  test("keeps the optimistic row state after success instead of immediately refetching it", async () => {
+    api.markReadMessages.mockResolvedValue(mutationSuccess(1));
+    const invalidateQueries = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useOptimisticMailMutation("read"), {
+      wrapper: wrapper(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(["m1"]);
+    });
+
+    const after = client.getQueryData(mailboxKey) as typeof baseMailbox;
+    expect(after.mailbox.groups[0]?.rows[0]?.unread).toBe(false);
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ["mailbox"] });
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ["thread"] });
   });
 });
